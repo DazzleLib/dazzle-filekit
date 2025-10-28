@@ -1,5 +1,5 @@
 """
-Platform-specific implementations for filetoolkit.
+Platform-specific implementations for dazzle_filekit.
 
 This module provides platform-specific implementations of file operations
 that vary between different operating systems.

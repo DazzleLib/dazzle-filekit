@@ -1,6 +1,6 @@
-# Contributing to filetoolkit
+# Contributing to dazzle-filekit
 
-Thank you for considering contributing to filetoolkit!
+Thank you for considering contributing to dazzle-filekit!
 
 ## Code of Conduct
 

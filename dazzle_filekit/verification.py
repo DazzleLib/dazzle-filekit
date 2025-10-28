@@ -26,7 +26,7 @@ def calculate_file_hash(
     """
     Calculate hash values for a file using one or more algorithms.
 
-    This is the core implementation used by both filetoolkit and preservelib.
+    This is the core implementation used by both dazzle_filekit and preservelib.
 
     Args:
         file_path: Path to the file

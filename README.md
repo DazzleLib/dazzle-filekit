@@ -1,7 +1,7 @@
-# filetoolkit
+# dazzle-filekit
 
-[![PyPI version](https://badge.fury.io/py/filetoolkit.svg)](https://badge.fury.io/py/filetoolkit)
-[![Python Versions](https://img.shields.io/pypi/pyversions/filetoolkit.svg)](https://pypi.org/project/filetoolkit/)
+[![PyPI version](https://badge.fury.io/py/dazzle-filekit.svg)](https://badge.fury.io/py/dazzle-filekit)
+[![Python Versions](https://img.shields.io/pypi/pyversions/dazzle-filekit.svg)](https://pypi.org/project/dazzle-filekit/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Cross-platform file operations toolkit with path handling, verification, and metadata preservation**
@@ -15,9 +15,9 @@
 - **UNC Path Support**: Optional integration with `unctools` for Windows UNC path handling
 - **Metadata Preservation**: Preserve timestamps, permissions, and file attributes
 
-## Why filetoolkit?
+## Why dazzle-filekit?
 
-While Python's standard library (`shutil`, `pathlib`, `os`) provides basic file operations, filetoolkit offers:
+While Python's standard library (`shutil`, `pathlib`, `os`) provides basic file operations, dazzle-filekit offers:
 
 - **Metadata Preservation**: Automatic preservation of timestamps, permissions, and extended attributes across platforms
 - **Hash Verification**: Built-in file verification with multiple hash algorithms (MD5, SHA1, SHA256, SHA512)
@@ -26,24 +26,24 @@ While Python's standard library (`shutil`, `pathlib`, `os`) provides basic file 
 - **Safe Operations**: Built-in conflict resolution, unique path generation, and error handling
 - **Directory Comparison**: Compare directory contents and verify file integrity across locations
 
-filetoolkit was designed for applications requiring reliable file operations with verification, such as backup tools, file synchronization, and data preservation systems (like the [preserve](https://github.com/djdarcy/preserve) project).
+dazzle-filekit was designed for applications requiring reliable file operations with verification, such as backup tools, file synchronization, and data preservation systems (like the [preserve](https://github.com/djdarcy/preserve) project).
 
 ## Installation
 
 ```bash
-pip install filetoolkit
+pip install dazzle-filekit
 ```
 
 ### Optional Dependencies
 
 For Windows UNC path support:
 ```bash
-pip install filetoolkit[unctools]
+pip install dazzle-filekit[unctools]
 ```
 
 For development:
 ```bash
-pip install filetoolkit[dev]
+pip install dazzle-filekit[dev]
 ```
 
 ## Quick Start
@@ -51,7 +51,7 @@ pip install filetoolkit[dev]
 ### Path Operations
 
 ```python
-from filetoolkit import normalize_path, find_files, is_unc_path
+from dazzle_filekit import normalize_path, find_files, is_unc_path
 
 # Normalize paths (returns Path object)
 path = normalize_path("/some/path/../file.txt")
@@ -68,7 +68,7 @@ if is_unc_path(r"\\server\share"):
 ### File Operations
 
 ```python
-from filetoolkit import copy_file, collect_file_metadata
+from dazzle_filekit import copy_file, collect_file_metadata
 
 # Copy file with metadata preservation
 success = copy_file("source.txt", "dest.txt", preserve_metadata=True)
@@ -81,7 +81,7 @@ print(f"Size: {metadata['size']}, Modified: {metadata['mtime']}")
 ### File Verification
 
 ```python
-from filetoolkit import calculate_file_hash, verify_file_hash
+from dazzle_filekit import calculate_file_hash, verify_file_hash
 
 # Calculate hash
 hash_value = calculate_file_hash("file.txt", algorithm="sha256")
@@ -145,11 +145,11 @@ is_valid = verify_file_hash("file.txt", expected_hash, algorithm="sha256")
 ### Logging
 
 ```python
-from filetoolkit import configure_logging, enable_verbose_logging
+from dazzle_filekit import configure_logging, enable_verbose_logging
 import logging
 
 # Configure logging level
-configure_logging(level=logging.DEBUG, log_file="filetoolkit.log")
+configure_logging(level=logging.DEBUG, log_file="dazzle-filekit.log")
 
 # Or enable verbose logging
 enable_verbose_logging()
@@ -160,22 +160,22 @@ enable_verbose_logging()
 ### Setup Development Environment
 
 ```bash
-git clone https://github.com/DazzleLib/filetoolkit.git
-cd filetoolkit/local
+git clone https://github.com/DazzleLib/dazzle-filekit.git
+cd dazzle-filekit/local
 pip install -e ".[dev]"
 ```
 
 ### Run Tests
 
 ```bash
-pytest tests/ -v --cov=filetoolkit
+pytest tests/ -v --cov=dazzle_filekit
 ```
 
 ### Code Formatting
 
 ```bash
-black filetoolkit tests
-flake8 filetoolkit tests
+black dazzle_filekit tests
+flake8 dazzle_filekit tests
 ```
 
 ## Contributing
@@ -192,10 +192,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Part of DazzleLib
 
-filetoolkit is part of the [DazzleLib](https://github.com/DazzleLib) ecosystem of Python file manipulation tools.
+dazzle-filekit is part of the [DazzleLib](https://github.com/DazzleLib) ecosystem of Python file manipulation tools.
 
 ### Related Projects
 
 - [UNCtools](https://github.com/DazzleLib/UNCtools) - Windows UNC path utilities
 - [dazzle-tree-lib](https://github.com/DazzleLib/dazzle-tree-lib) - Tree structure utilities
-- [preserve](https://github.com/djdarcy/preserve) - File preservation tool using filetoolkit
+- [preserve](https://github.com/djdarcy/preserve) - File preservation tool using dazzle-filekit

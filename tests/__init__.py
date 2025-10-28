@@ -1,3 +1,3 @@
 """
-Test suite for filetoolkit package.
+Test suite for dazzle_filekit package.
 """

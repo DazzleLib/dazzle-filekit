@@ -1,7 +1,7 @@
 """
-Initialization file for the filetoolkit.utils package.
+Initialization file for the dazzle_filekit.utils package.
 
-This package provides utility functions for the filetoolkit library.
+This package provides utility functions for the dazzle_filekit library.
 """
 
 import logging
