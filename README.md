@@ -53,10 +53,11 @@ pip install filetoolkit[dev]
 ```python
 from filetoolkit import normalize_path, find_files, is_unc_path
 
-# Normalize paths
+# Normalize paths (returns Path object)
 path = normalize_path("/some/path/../file.txt")
+print(path)  # PosixPath('/some/file.txt') or WindowsPath('C:/some/file.txt')
 
-# Find files with patterns
+# Find files with patterns (returns list of path strings)
 files = find_files("/directory", patterns=["*.py", "*.txt"])
 
 # Check UNC paths
