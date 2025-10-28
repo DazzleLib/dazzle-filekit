@@ -15,6 +15,19 @@
 - **UNC Path Support**: Optional integration with `unctools` for Windows UNC path handling
 - **Metadata Preservation**: Preserve timestamps, permissions, and file attributes
 
+## Why filetoolkit?
+
+While Python's standard library (`shutil`, `pathlib`, `os`) provides basic file operations, filetoolkit offers:
+
+- **Metadata Preservation**: Automatic preservation of timestamps, permissions, and extended attributes across platforms
+- **Hash Verification**: Built-in file verification with multiple hash algorithms (MD5, SHA1, SHA256, SHA512)
+- **Cross-Platform Path Handling**: Unified API for handling Windows UNC paths, network drives, and Unix paths
+- **Batch Operations**: Process entire directory trees with pattern matching and filtering
+- **Safe Operations**: Built-in conflict resolution, unique path generation, and error handling
+- **Directory Comparison**: Compare directory contents and verify file integrity across locations
+
+filetoolkit was designed for applications requiring reliable file operations with verification, such as backup tools, file synchronization, and data preservation systems (like the [preserve](https://github.com/djdarcy/preserve) project).
+
 ## Installation
 
 ```bash
@@ -182,10 +195,6 @@ filetoolkit is part of the [DazzleLib](https://github.com/DazzleLib) ecosystem o
 
 ### Related Projects
 
-- [unctools](https://github.com/DazzleLib/unctools) - Windows UNC path utilities
-- [preservelib](https://github.com/DazzleLib/preservelib) - File preservation with manifest tracking
-- [dazzletreelib](https://github.com/DazzleLib/dazzletreelib) - Tree structure utilities
-
-## Acknowledgements
-
-Dustin Darcy (6962246+djdarcy@users.noreply.github.com)
+- [UNCtools](https://github.com/DazzleLib/UNCtools) - Windows UNC path utilities
+- [dazzle-tree-lib](https://github.com/DazzleLib/dazzle-tree-lib) - Tree structure utilities
+- [preserve](https://github.com/djdarcy/preserve) - File preservation tool using filetoolkit
