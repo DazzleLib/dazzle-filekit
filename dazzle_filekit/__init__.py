@@ -38,6 +38,22 @@ from .paths import (
     get_path_type
 )
 
+from .utils.compat import (
+    normalize_cross_platform_path,
+    path_exists_cross_platform,
+    is_windows,
+    is_unix
+)
+
+from .utils.disk import (
+    DiskUsage,
+    InsufficientSpaceError,
+    get_disk_usage,
+    check_disk_space,
+    calculate_total_size,
+    ensure_disk_space
+)
+
 from .operations import (
     copy_file,
     move_file,
@@ -61,7 +77,7 @@ from .verification import (
     verify_copied_files
 )
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -140,6 +156,20 @@ __all__ = [
     'create_parent_dirs',
     'ensure_unique_path',
     'get_path_type',
+
+    # Cross-platform path utilities
+    'normalize_cross_platform_path',
+    'path_exists_cross_platform',
+    'is_windows',
+    'is_unix',
+
+    # Disk space utilities
+    'DiskUsage',
+    'InsufficientSpaceError',
+    'get_disk_usage',
+    'check_disk_space',
+    'calculate_total_size',
+    'ensure_disk_space',
     
     # Operation functions
     'copy_file',

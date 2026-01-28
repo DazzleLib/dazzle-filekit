@@ -10,7 +10,7 @@ import sys
 import platform
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
@@ -183,6 +183,90 @@ def get_app_data_dir(app_name: str) -> Path:
         # Linux/Unix: ~/.config/app_name
         xdg_config_home = os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))
         return Path(xdg_config_home) / app_name
+
+def normalize_cross_platform_path(path: Union[str, Path]) -> Path:
+    """
+    Normalize a path from various cross-platform formats to native format.
+
+    Handles conversion of:
+    - Git Bash style: /c/Users/... -> C:/Users/... (on Windows)
+    - WSL style: /mnt/c/Users/... -> C:/Users/... (on Windows)
+    - Windows backslashes: C:\\Users\\... -> C:/Users/... (normalized)
+    - Forward slashes: preserved on Unix, converted on Windows
+
+    Args:
+        path: Path string in any of the supported formats
+
+    Returns:
+        Path object normalized for the current platform
+
+    Examples:
+        # On Windows:
+        normalize_cross_platform_path("/c/Users/foo")  # -> Path("C:/Users/foo")
+        normalize_cross_platform_path("/mnt/c/Users/foo")  # -> Path("C:/Users/foo")
+        normalize_cross_platform_path("C:\\Users\\foo")  # -> Path("C:/Users/foo")
+
+        # On Unix:
+        normalize_cross_platform_path("C:\\Users\\foo")  # -> Path("/c/Users/foo")
+    """
+    import re
+
+    path_str = str(path)
+
+    if is_windows():
+        # On Windows, convert Unix-style paths to Windows-style
+
+        # Handle Git Bash style: /c/Users/... -> C:/Users/...
+        git_bash_match = re.match(r'^/([a-zA-Z])(/.*)?$', path_str)
+        if git_bash_match:
+            drive = git_bash_match.group(1).upper()
+            rest = git_bash_match.group(2) or ''
+            path_str = f"{drive}:{rest}"
+
+        # Handle WSL style: /mnt/c/Users/... -> C:/Users/...
+        wsl_match = re.match(r'^/mnt/([a-zA-Z])(/.*)?$', path_str)
+        if wsl_match:
+            drive = wsl_match.group(1).upper()
+            rest = wsl_match.group(2) or ''
+            path_str = f"{drive}:{rest}"
+
+        # Normalize slashes for Path on Windows (both work, but be consistent)
+        path_str = path_str.replace('/', '\\')
+    else:
+        # On Unix, convert Windows-style paths to Unix-style
+
+        # Handle Windows paths: C:\Users\... or C:/Users/... -> /c/Users/...
+        windows_match = re.match(r'^([a-zA-Z]):[\\/](.*)$', path_str)
+        if windows_match:
+            drive = windows_match.group(1).lower()
+            rest = windows_match.group(2).replace('\\', '/')
+            path_str = f"/{drive}/{rest}"
+        else:
+            # Just normalize backslashes to forward slashes
+            path_str = path_str.replace('\\', '/')
+
+    return Path(path_str)
+
+
+def path_exists_cross_platform(path: Union[str, Path]) -> bool:
+    """
+    Check if a path exists, handling cross-platform path formats.
+
+    This is useful when receiving paths from external sources (like Claude Code)
+    that may be in a different format than the current platform expects.
+
+    Args:
+        path: Path string in any supported format
+
+    Returns:
+        True if the path exists, False otherwise
+    """
+    try:
+        normalized = normalize_cross_platform_path(path)
+        return normalized.exists()
+    except Exception:
+        return False
+
 
 def get_drive_mappings() -> Dict[str, str]:
     """
