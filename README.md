@@ -1,19 +1,23 @@
 # dazzle-filekit
 
 [![PyPI version](https://badge.fury.io/py/dazzle-filekit.svg)](https://badge.fury.io/py/dazzle-filekit)
-[![Python Versions](https://img.shields.io/pypi/pyversions/dazzle-filekit.svg)](https://pypi.org/project/dazzle-filekit/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20BSD-lightgrey.svg)](docs/platform-support.md)
+[![GitHub Discussions](https://img.shields.io/github/discussions/DazzleLib/dazzle-filekit)](https://github.com/DazzleLib/dazzle-filekit/discussions)
 
-**Cross-platform file operations toolkit with path handling, verification, and metadata preservation**
+> **Cross-platform file operations with path handling, verification, and metadata preservation.**
+
+A Python toolkit for reliable file operations across Windows, Linux, and macOS. Handles path normalization between Git Bash, WSL, and native formats, file verification with multiple hash algorithms, and metadata-preserving copy/move operations.
 
 ## Features
 
-- **Path Operations**: Cross-platform path handling, normalization, and manipulation
-- **File Operations**: Copy, move, and manage files with metadata preservation
-- **File Verification**: Calculate and verify file hashes (MD5, SHA1, SHA256, SHA512)
-- **Platform Support**: Windows, Linux, and macOS with platform-specific optimizations
-- **UNC Path Support**: Optional integration with `unctools` for Windows UNC path handling
-- **Metadata Preservation**: Preserve timestamps, permissions, and file attributes
+- **Cross-Platform Paths** - Normalize between Git Bash (`/c/...`), WSL (`/mnt/c/...`), and native Windows/Unix paths
+- **File Operations** - Copy, move, and manage files with metadata preservation
+- **File Verification** - Calculate and verify file hashes (MD5, SHA1, SHA256, SHA512)
+- **Disk Space Checking** - Pre-flight space verification before operations
+- **Platform Support** - Windows, Linux, macOS, and BSD with platform-specific optimizations
+- **UNC Path Support** - Optional integration with `unctools` for Windows UNC path handling
 
 ## Why dazzle-filekit?
 
@@ -26,7 +30,7 @@ While Python's standard library (`shutil`, `pathlib`, `os`) provides basic file 
 - **Safe Operations**: Built-in conflict resolution, unique path generation, and error handling
 - **Directory Comparison**: Compare directory contents and verify file integrity across locations
 
-dazzle-filekit was designed for applications requiring reliable file operations with verification, such as backup tools, file synchronization, and data preservation systems (like the [preserve](https://github.com/djdarcy/preserve) project).
+dazzle-filekit was designed for applications requiring reliable file operations with verification, such as backup tools, file synchronization, and data preservation systems (like the [preserve](https://github.com/DazzleTools/preserve) project).
 
 ## Installation
 
@@ -36,17 +40,33 @@ pip install dazzle-filekit
 
 ### Optional Dependencies
 
-For Windows UNC path support:
 ```bash
+# Windows UNC path support
 pip install dazzle-filekit[unctools]
-```
 
-For development:
-```bash
+# Development tools
 pip install dazzle-filekit[dev]
 ```
 
 ## Quick Start
+
+### Cross-Platform Path Handling
+
+```python
+from dazzle_filekit import normalize_cross_platform_path, path_exists_cross_platform
+
+# Convert Git Bash style paths to native format
+# On Windows: /c/Users/foo -> C:\Users\foo
+# On Unix: C:\Users\foo -> /c/Users/foo
+path = normalize_cross_platform_path("/c/Users/foo/file.txt")
+
+# Also handles WSL paths: /mnt/c/Users/...
+path = normalize_cross_platform_path("/mnt/c/Users/foo/file.txt")
+
+# Check if a cross-platform path exists
+if path_exists_cross_platform("/c/Users/foo/file.txt"):
+    print("File exists!")
+```
 
 ### Path Operations
 
@@ -78,6 +98,29 @@ metadata = collect_file_metadata("file.txt")
 print(f"Size: {metadata['size']}, Modified: {metadata['mtime']}")
 ```
 
+### Disk Space Checking
+
+```python
+from dazzle_filekit import get_disk_usage, check_disk_space, ensure_disk_space
+
+# Get disk usage statistics
+usage = get_disk_usage("/path/to/check")
+print(f"Total: {usage.total}, Free: {usage.free}, Used: {usage.used_percent:.1f}%")
+
+# Check if space is available for an operation
+has_space, required, available, message = check_disk_space(
+    "/destination",
+    required_bytes=1_000_000_000,  # 1GB
+    safety_margin=0.1  # 10% extra margin
+)
+
+# Check space for a list of source files
+has_space, message = ensure_disk_space(
+    dest_path="/destination",
+    source_paths=["/path/to/file1.zip", "/path/to/dir/"]
+)
+```
+
 ### File Verification
 
 ```python
@@ -91,6 +134,12 @@ is_valid = verify_file_hash("file.txt", expected_hash, algorithm="sha256")
 ```
 
 ## API Reference
+
+### Cross-Platform Utilities
+
+- `normalize_cross_platform_path(path)` - Normalize Git Bash/WSL/Windows paths to native format
+- `path_exists_cross_platform(path)` - Check path existence across formats
+- `is_windows()` / `is_unix()` - Platform detection
 
 ### Path Functions
 
@@ -112,33 +161,33 @@ is_valid = verify_file_hash("file.txt", expected_hash, algorithm="sha256")
 - `remove_file(path)` - Remove file safely
 - `remove_directory(path, recursive)` - Remove directory
 
+### Disk Space Functions
+
+- `get_disk_usage(path)` - Get disk usage statistics (total, used, free)
+- `check_disk_space(dest, required, margin)` - Check if space is sufficient
+- `calculate_total_size(paths)` - Calculate total size of files/directories
+- `ensure_disk_space(dest, sources, margin)` - Verify space for copy operation
+
 ### Verification Functions
 
 - `calculate_file_hash(path, algorithm)` - Calculate file hash
 - `verify_file_hash(path, expected_hash, algorithm)` - Verify hash
 - `calculate_directory_hashes(directory, algorithm)` - Hash all files in directory
-- `save_hashes_to_file(hashes, output_file)` - Save hashes to file
-- `load_hashes_from_file(hash_file)` - Load hashes from file
+- `save_hashes_to_file(hashes, output_file)` / `load_hashes_from_file(hash_file)` - Hash persistence
 - `compare_directories(dir1, dir2)` - Compare directory contents
 - `verify_copied_files(src_dir, dst_dir)` - Verify copy operation
 
 ## Platform Support
 
-### Windows
-- Full UNC path support (with `unctools`)
-- Network drive detection
-- NTFS metadata preservation
-- Long path support (>260 characters)
+See [docs/platform-support.md](docs/platform-support.md) for the full platform support matrix and platform-specific features.
 
-### Linux/Unix
-- POSIX permissions preservation
-- Symlink handling
-- Extended attributes
-
-### macOS
-- HFS+ and APFS support
-- Extended attributes
-- Resource forks (where applicable)
+| Platform | Status |
+|----------|--------|
+| Windows 10/11 | Tested |
+| Linux | Tested |
+| WSL / WSL2 | Tested |
+| macOS | Expected to work |
+| BSD | Expected to work |
 
 ## Configuration
 
@@ -161,7 +210,7 @@ enable_verbose_logging()
 
 ```bash
 git clone https://github.com/DazzleLib/dazzle-filekit.git
-cd dazzle-filekit/local
+cd dazzle-filekit
 pip install -e ".[dev]"
 ```
 
@@ -197,5 +246,5 @@ dazzle-filekit is part of the [DazzleLib](https://github.com/DazzleLib) ecosyste
 ### Related Projects
 
 - [UNCtools](https://github.com/DazzleLib/UNCtools) - Windows UNC path utilities
+- [preserve](https://github.com/DazzleTools/preserve) - File preservation with manifest tracking and restoration
 - [dazzle-tree-lib](https://github.com/DazzleLib/dazzle-tree-lib) - Tree structure utilities
-- [preserve](https://github.com/djdarcy/preserve) - File preservation tool using dazzle-filekit

@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 from .compat import (
     is_windows, is_unix, is_admin, is_root,
     fix_path_separators, fix_path_case, get_system_encoding,
-    get_system_temp_dir, get_home_dir, get_app_data_dir
+    get_system_temp_dir, get_home_dir, get_app_data_dir,
+    normalize_cross_platform_path, path_exists_cross_platform
 )
 
 from .validation import (
@@ -28,12 +29,18 @@ from .logger import (
     get_all_logger_names, ColoredFormatter
 )
 
+from .disk import (
+    DiskUsage, InsufficientSpaceError,
+    get_disk_usage, check_disk_space, calculate_total_size, ensure_disk_space
+)
+
 # Define exported functions
 __all__ = [
     # Compatibility functions
     'is_windows', 'is_unix', 'is_admin', 'is_root',
     'fix_path_separators', 'fix_path_case', 'get_system_encoding',
     'get_system_temp_dir', 'get_home_dir', 'get_app_data_dir',
+    'normalize_cross_platform_path', 'path_exists_cross_platform',
     
     # Validation functions
     'is_valid_path', 'is_safe_path', 'validate_path_chars',
@@ -42,5 +49,9 @@ __all__ = [
     
     # Logger functions
     'setup_logger', 'set_log_level', 'add_log_file',
-    'get_all_logger_names', 'ColoredFormatter'
+    'get_all_logger_names', 'ColoredFormatter',
+
+    # Disk space functions
+    'DiskUsage', 'InsufficientSpaceError',
+    'get_disk_usage', 'check_disk_space', 'calculate_total_size', 'ensure_disk_space'
 ]
