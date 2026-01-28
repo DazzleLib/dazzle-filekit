@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for filetoolkit
+about: Suggest an idea for dazzle-filekit
 title: "[FEATURE] "
 labels: enhancement
 assignees: ''

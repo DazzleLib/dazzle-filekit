@@ -1,5 +1,5 @@
 """
-filetoolkit - A general-purpose file manipulation library.
+dazzle_filekit - A general-purpose file manipulation library.
 
 This package provides utilities for file operations, path handling, and verification
 across different platforms, with a focus on preserving file metadata.
@@ -65,7 +65,7 @@ __version__ = '0.1.0'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
-    Configure logging for filetoolkit.
+    Configure logging for dazzle_filekit.
     
     Args:
         level: Logging level

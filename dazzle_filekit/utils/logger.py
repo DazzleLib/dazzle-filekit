@@ -1,7 +1,7 @@
 """
-Logging utilities for filetoolkit.
+Logging utilities for dazzle_filekit.
 
-This module provides a standardized logging setup for filetoolkit
+This module provides a standardized logging setup for dazzle_filekit
 and related applications, with support for console and file logging.
 """
 
@@ -67,7 +67,7 @@ class ColoredFormatter(logging.Formatter):
         return message
 
 def setup_logger(
-    name: str = 'filetoolkit',
+    name: str = 'dazzle_filekit',
     level: int = DEFAULT_LOG_LEVEL,
     log_file: Optional[Union[str, Path]] = None,
     log_format: str = DEFAULT_LOG_FORMAT,

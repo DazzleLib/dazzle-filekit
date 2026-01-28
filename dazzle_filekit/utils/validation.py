@@ -1,5 +1,5 @@
 """
-Path validation utilities for filetoolkit.
+Path validation utilities for dazzle_filekit.
 
 This module provides functions for validating path strings and objects,
 ensuring they meet the requirements for various file operations.

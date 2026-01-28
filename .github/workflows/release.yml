@@ -69,7 +69,7 @@ jobs:
       shell: bash
       run: |
         pip install dist/*.whl
-        python -c "import filetoolkit; print(f'filetoolkit {filetoolkit.__version__} installed successfully')"
+        python -c "import dazzle_filekit; print(f'dazzle_filekit {dazzle_filekit.__version__} installed successfully')"
 
   publish-test-pypi:
     needs: test-install

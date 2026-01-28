@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="filetoolkit",
+    name="dazzle-filekit",
     version="0.1.1",
     description="Cross-platform file operations toolkit with path handling, verification, and metadata preservation",
     author="Dustin",
