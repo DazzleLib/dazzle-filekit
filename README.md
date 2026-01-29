@@ -1,6 +1,6 @@
 # dazzle-filekit
 
-[![PyPI version](https://badge.fury.io/py/dazzle-filekit.svg)](https://badge.fury.io/py/dazzle-filekit)
+[![PyPI version](https://img.shields.io/pypi/v/dazzle-filekit.svg)](https://pypi.org/project/dazzle-filekit/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20BSD-lightgrey.svg)](docs/platform-support.md)
@@ -88,7 +88,7 @@ if is_unc_path(r"\\server\share"):
 ### File Operations
 
 ```python
-from dazzle_filekit import copy_file, collect_file_metadata
+from dazzle_filekit import copy_file, collect_file_metadata, create_symlink
 
 # Copy file with metadata preservation
 success = copy_file("source.txt", "dest.txt", preserve_metadata=True)
@@ -96,6 +96,12 @@ success = copy_file("source.txt", "dest.txt", preserve_metadata=True)
 # Collect file metadata
 metadata = collect_file_metadata("file.txt")
 print(f"Size: {metadata['size']}, Modified: {metadata['mtime']}")
+
+# Create symbolic link (cross-platform)
+success = create_symlink("/path/to/target", "/path/to/link")
+
+# Force replace existing link
+success = create_symlink("/new/target", "/path/to/link", force=True)
 ```
 
 ### Disk Space Checking
@@ -160,6 +166,7 @@ is_valid = verify_file_hash("file.txt", expected_hash, algorithm="sha256")
 - `create_directory_structure(path)` - Create directory tree
 - `remove_file(path)` - Remove file safely
 - `remove_directory(path, recursive)` - Remove directory
+- `create_symlink(target, link, force)` - Create symbolic link with cross-platform support
 
 ### Disk Space Functions
 
