@@ -63,7 +63,8 @@ from .operations import (
     move_files_with_path,
     create_directory_structure,
     remove_file,
-    remove_directory
+    remove_directory,
+    create_symlink
 )
 
 from .verification import (
@@ -77,7 +78,7 @@ from .verification import (
     verify_copied_files
 )
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -181,6 +182,7 @@ __all__ = [
     'create_directory_structure',
     'remove_file',
     'remove_directory',
+    'create_symlink',
     
     # Verification functions
     'calculate_file_hash',

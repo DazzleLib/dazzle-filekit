@@ -668,3 +668,144 @@ def remove_directory(path: Union[str, Path], recursive: bool = False, force: boo
         else:
             logger.error(f"Error removing directory {path}: {e}")
             return False
+
+
+def create_symlink(
+    target: Union[str, Path],
+    link: Union[str, Path],
+    force: bool = False,
+    target_is_directory: Optional[bool] = None
+) -> bool:
+    """
+    Create a symbolic link with cross-platform handling.
+
+    On Unix systems, uses os.symlink directly.
+    On Windows, attempts multiple methods:
+    1. os.symlink (requires Developer Mode or admin on Windows 10+)
+    2. dazzlelink library if available (handles elevation gracefully)
+    3. mklink command as fallback
+
+    Args:
+        target: The target path the symlink will point to
+        link: The path where the symlink will be created
+        force: If True, remove existing file/symlink at link path first
+        target_is_directory: Whether target is a directory (auto-detected if None)
+
+    Returns:
+        True if symlink was created successfully, False otherwise
+
+    Example:
+        >>> create_symlink('/path/to/file.txt', '/path/to/link.txt')
+        True
+        >>> create_symlink('C:\\data\\folder', 'C:\\links\\folder_link', target_is_directory=True)
+        True
+    """
+    target_path = Path(target)
+    link_path = Path(link)
+
+    # Handle existing link
+    if link_path.exists() or link_path.is_symlink():
+        if not force:
+            logger.warning(f"Link path already exists: {link_path}")
+            return False
+        try:
+            if link_path.is_dir() and not link_path.is_symlink():
+                shutil.rmtree(link_path)
+            else:
+                link_path.unlink()
+            logger.debug(f"Removed existing path: {link_path}")
+        except Exception as e:
+            logger.error(f"Failed to remove existing path {link_path}: {e}")
+            return False
+
+    # Create parent directories if needed
+    try:
+        link_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.error(f"Failed to create parent directories for {link_path}: {e}")
+        return False
+
+    # Auto-detect if target is a directory
+    if target_is_directory is None:
+        target_is_directory = target_path.is_dir()
+
+    # Try to create symlink
+    if platform.system() != 'Windows':
+        # Unix: straightforward symlink
+        try:
+            os.symlink(target_path, link_path)
+            logger.debug(f"Created symlink: {link_path} -> {target_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create symlink on Unix: {e}")
+            return False
+
+    # Windows: try multiple methods
+    return _create_windows_symlink(target_path, link_path, target_is_directory)
+
+
+def _create_windows_symlink(target: Path, link: Path, is_directory: bool) -> bool:
+    """
+    Create a symbolic link on Windows using multiple fallback methods.
+
+    Args:
+        target: Target path
+        link: Link path to create
+        is_directory: Whether target is a directory
+
+    Returns:
+        True if successful, False otherwise
+    """
+    # Method 1: Try os.symlink (works with Developer Mode enabled)
+    try:
+        os.symlink(target, link, target_is_directory=is_directory)
+        logger.debug(f"Created Windows symlink using os.symlink: {link} -> {target}")
+        return True
+    except OSError as e:
+        # Error 1314 = "A required privilege is not held by the client"
+        if getattr(e, 'winerror', 0) == 1314:
+            logger.debug("os.symlink failed (Developer Mode not enabled), trying alternatives")
+        else:
+            logger.warning(f"os.symlink failed: {e}")
+
+    # Method 2: Try dazzlelink if available
+    try:
+        from dazzlelink.operations import create_windows_symlink as dazzle_create_symlink
+        result = dazzle_create_symlink(str(target), str(link), is_directory)
+        if result:
+            logger.debug(f"Created Windows symlink using dazzlelink: {link} -> {target}")
+            return True
+    except ImportError:
+        logger.debug("dazzlelink not available, trying mklink fallback")
+    except Exception as e:
+        logger.warning(f"dazzlelink symlink creation failed: {e}")
+
+    # Method 3: Try mklink command (may require elevation)
+    try:
+        import subprocess
+        dir_flag = '/D ' if is_directory else ''
+        cmd = f'mklink {dir_flag}"{link}" "{target}"'
+
+        result = subprocess.run(
+            ['cmd', '/c', cmd],
+            text=True,
+            capture_output=True,
+            check=False
+        )
+
+        if result.returncode == 0:
+            logger.debug(f"Created Windows symlink using mklink: {link} -> {target}")
+            return True
+        else:
+            logger.warning(f"mklink failed: {result.stderr.strip()}")
+    except Exception as e:
+        logger.warning(f"mklink command failed: {e}")
+
+    # All methods failed
+    logger.error(
+        f"Failed to create symlink on Windows. This typically requires either:\n"
+        f"  1. Developer Mode enabled (Settings > Update & Security > For developers)\n"
+        f"  2. Running as Administrator\n"
+        f"  3. Install dazzlelink: pip install dazzlelink"
+    )
+    return False
