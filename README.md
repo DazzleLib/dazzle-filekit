@@ -53,7 +53,11 @@ pip install dazzle-filekit[dev]
 ### Cross-Platform Path Handling
 
 ```python
-from dazzle_filekit import normalize_cross_platform_path, path_exists_cross_platform
+from dazzle_filekit import (
+    normalize_cross_platform_path,
+    resolve_cross_platform_path,
+    path_exists_cross_platform,
+)
 
 # Convert Git Bash style paths to native format
 # On Windows: /c/Users/foo -> C:\Users\foo
@@ -63,7 +67,11 @@ path = normalize_cross_platform_path("/c/Users/foo/file.txt")
 # Also handles WSL paths: /mnt/c/Users/...
 path = normalize_cross_platform_path("/mnt/c/Users/foo/file.txt")
 
-# Check if a cross-platform path exists
+# Resolve with probing: if the normalized path doesn't exist,
+# tries alternate platform formats (WSL, MSYS, Windows)
+path = resolve_cross_platform_path("/mnt/c/Users/foo/file.txt")
+
+# Check if a cross-platform path exists (uses resolve internally)
 if path_exists_cross_platform("/c/Users/foo/file.txt"):
     print("File exists!")
 ```
@@ -144,6 +152,7 @@ is_valid = verify_file_hash("file.txt", expected_hash, algorithm="sha256")
 ### Cross-Platform Utilities
 
 - `normalize_cross_platform_path(path)` - Normalize Git Bash/WSL/Windows paths to native format
+- `resolve_cross_platform_path(path)` - Normalize and probe alternate platform formats if path not found
 - `path_exists_cross_platform(path)` - Check path existence across formats
 - `is_windows()` / `is_unix()` - Platform detection
 

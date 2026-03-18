@@ -40,6 +40,7 @@ from .paths import (
 
 from .utils.compat import (
     normalize_cross_platform_path,
+    resolve_cross_platform_path,
     path_exists_cross_platform,
     is_windows,
     is_unix
@@ -160,6 +161,7 @@ __all__ = [
 
     # Cross-platform path utilities
     'normalize_cross_platform_path',
+    'resolve_cross_platform_path',
     'path_exists_cross_platform',
     'is_windows',
     'is_unix',

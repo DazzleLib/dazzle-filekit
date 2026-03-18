@@ -248,12 +248,93 @@ def normalize_cross_platform_path(path: Union[str, Path]) -> Path:
     return Path(path_str)
 
 
+def resolve_cross_platform_path(path: Union[str, Path]) -> Path:
+    """
+    Resolve a path by normalizing it and probing alternate platform formats.
+
+    First normalizes using normalize_cross_platform_path(). If the result
+    doesn't exist, tries alternate platform representations:
+
+    On Windows:
+      /mnt/c/Users/...           -> C:\\Users\\...         (WSL mount)
+      /c/Users/...               -> C:\\Users\\...         (MSYS/Git Bash)
+      .../mnt/c/Users/...        -> C:\\Users\\...         (MSYS-mangled WSL)
+
+    On Linux/macOS:
+      C:\\Users\\...             -> /mnt/c/Users/...       (WSL)
+      C:\\Users\\...             -> /c/Users/...           (MSYS)
+
+    Returns the first existing candidate, or the normalized form if none exist.
+
+    Args:
+        path: Path string in any supported format
+
+    Returns:
+        Path object for the best match found
+
+    Examples:
+        # On Windows, if C:\\Users\\foo\\file.txt exists:
+        resolve_cross_platform_path("/mnt/c/Users/foo/file.txt")
+        # -> Path("C:/Users/foo/file.txt")
+    """
+    import re
+
+    normalized = normalize_cross_platform_path(path)
+
+    if normalized.exists():
+        return normalized
+
+    path_str = str(normalized)
+
+    if is_windows():
+        # Try WSL /mnt/c/ -> C:\ (in case normalization didn't catch it)
+        wsl_match = re.match(r'^/mnt/([a-zA-Z])(/.*)?$', str(path))
+        if wsl_match:
+            drive = wsl_match.group(1).upper()
+            rest = (wsl_match.group(2) or '').replace('/', '\\')
+            candidate = Path(f"{drive}:{rest}")
+            if candidate.exists():
+                return candidate
+
+        # Check for MSYS-mangled WSL paths
+        # Git Bash converts /mnt/c/... to C:\Program Files\Git\mnt\c\...
+        mangled = re.search(r'[/\\]mnt[/\\]([a-zA-Z])[/\\](.*)', path_str)
+        if mangled:
+            drive = mangled.group(1).upper()
+            rest = mangled.group(2).replace('/', '\\')
+            candidate = Path(f"{drive}:\\{rest}")
+            if candidate.exists():
+                return candidate
+
+    else:
+        # On Linux/macOS: try Windows path -> WSL or MSYS format
+        win_match = re.match(r'^([a-zA-Z]):[/\\](.*)', path_str)
+        if win_match:
+            drive = win_match.group(1).lower()
+            rest = win_match.group(2).replace('\\', '/')
+
+            # Try WSL mount
+            candidate = Path(f"/mnt/{drive}/{rest}")
+            if candidate.exists():
+                return candidate
+
+            # Try MSYS/Git Bash style
+            candidate = Path(f"/{drive}/{rest}")
+            if candidate.exists():
+                return candidate
+
+    return normalized
+
+
 def path_exists_cross_platform(path: Union[str, Path]) -> bool:
     """
     Check if a path exists, handling cross-platform path formats.
 
     This is useful when receiving paths from external sources (like Claude Code)
     that may be in a different format than the current platform expects.
+
+    Uses resolve_cross_platform_path() to try alternate platform formats
+    if the normalized path doesn't exist.
 
     Args:
         path: Path string in any supported format
@@ -262,8 +343,8 @@ def path_exists_cross_platform(path: Union[str, Path]) -> bool:
         True if the path exists, False otherwise
     """
     try:
-        normalized = normalize_cross_platform_path(path)
-        return normalized.exists()
+        resolved = resolve_cross_platform_path(path)
+        return resolved.exists()
     except Exception:
         return False
 
