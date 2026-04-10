@@ -19,21 +19,82 @@ logger = logging.getLogger(__name__)
 def normalize_path(path: Union[str, Path]) -> Path:
     """
     Normalize a path to its canonical form.
-    
+
+    This RESOLVES symlinks and junctions to their targets. Use
+    normalize_path_no_resolve() when you need the literal link path.
+
     Args:
         path: The path to normalize
-        
+
     Returns:
         The normalized path as a Path object
     """
     path_obj = Path(path).expanduser()
-    
+
     try:
         # Use resolve() to handle symlinks and relative paths
         return path_obj.resolve()
     except (OSError, RuntimeError):
         # Fall back to absolute() if resolve() fails (e.g., non-existent path)
         return path_obj.absolute()
+
+
+# MSYS-style path pattern: /c/ or /d/ etc.
+_MSYS_DRIVE_RE = re.compile(r"^/([a-zA-Z])/")
+
+
+def normalize_path_no_resolve(path: Union[str, Path]) -> Path:
+    """
+    Normalize a path WITHOUT resolving symlinks or junctions.
+
+    Use this instead of normalize_path() when you need the literal path to
+    a symlink, junction, or hardlink -- not the path it points to.
+
+    Handles:
+        /c/Users/foo     ->  C:\\Users\\foo       (MSYS/Git Bash style)
+        c:/Users/foo     ->  C:\\Users\\foo       (forward-slash Windows)
+        ~/foo            ->  C:\\Users\\Me\\foo   (tilde expansion)
+        ./relative       ->  C:\\cwd\\relative    (relative to cwd)
+        \\\\?\\C:\\...   ->  C:\\...              (extended-length prefix)
+
+    Unlike normalize_path() and os.path.abspath(), this function does NOT
+    follow symlinks. On Windows, os.path.abspath() can resolve symlinks
+    and junctions, which destroys the distinction between a link and its
+    target. This function uses os.path.normpath() + manual cwd join instead.
+
+    Args:
+        path: The path to normalize
+
+    Returns:
+        The normalized path as a Path object
+    """
+    path_str = str(path).strip()
+
+    # Expand ~ first
+    path_str = os.path.expanduser(path_str)
+
+    # Convert MSYS /c/path -> C:/path (before any backslash conversion)
+    m = _MSYS_DRIVE_RE.match(path_str)
+    if m:
+        drive = m.group(1).upper()
+        path_str = drive + ":" + path_str[2:]
+
+    # Normalize slashes to OS native
+    path_str = path_str.replace("/", os.sep)
+
+    # Strip extended-length prefix \\?\ on Windows
+    if sys.platform == "win32" and path_str.startswith("\\\\?\\"):
+        path_str = path_str[4:]
+
+    # Normalize . and .. segments WITHOUT resolving symlinks
+    path_str = os.path.normpath(path_str)
+
+    # Make absolute without resolving links
+    # (os.path.abspath calls GetFullPathName on Windows which can resolve links)
+    if not os.path.isabs(path_str):
+        path_str = os.path.normpath(os.path.join(os.getcwd(), path_str))
+
+    return Path(path_str)
 
 
 def is_same_file(path1: Union[str, Path], path2: Union[str, Path]) -> bool:

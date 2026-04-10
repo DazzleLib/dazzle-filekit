@@ -5,6 +5,17 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-04-10
+
+### Added
+- `normalize_path_no_resolve()` - Normalize paths without resolving symlinks or junctions
+  - Handles MSYS (`/c/`), tilde, extended-length prefix (`\\?\`), relative paths
+  - Uses `os.path.normpath()` instead of `Path.resolve()` to preserve link identity
+  - Use case: tools that need the literal path to a link, not its target (e.g., safe-delete, link management)
+
+### Fixed
+- Synced version strings across `pyproject.toml`, `__init__.py`, and `setup.py` (were 0.2.2, 0.2.1, 0.2.0 respectively)
+
 ## [0.2.2] - 2026-03-18
 
 ### Added

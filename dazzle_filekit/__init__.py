@@ -25,6 +25,7 @@ if not logger.handlers:
 # Import core functionality
 from .paths import (
     normalize_path,
+    normalize_path_no_resolve,
     is_same_file,
     split_drive_letter,
     is_unc_path,
@@ -79,7 +80,7 @@ from .verification import (
     verify_copied_files
 )
 
-__version__ = '0.2.1'
+__version__ = '0.2.3'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -147,6 +148,7 @@ __all__ = [
     
     # Path functions
     'normalize_path',
+    'normalize_path_no_resolve',
     'is_same_file',
     'split_drive_letter',
     'is_unc_path',
