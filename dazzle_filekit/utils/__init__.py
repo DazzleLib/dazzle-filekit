@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Import module functions
 from .compat import (
-    is_windows, is_unix, is_admin, is_root,
+    is_windows, is_unix, is_wsl, is_admin, is_root,
     fix_path_separators, fix_path_case, get_system_encoding,
     get_system_temp_dir, get_home_dir, get_app_data_dir,
     normalize_cross_platform_path, resolve_cross_platform_path,
@@ -38,7 +38,7 @@ from .disk import (
 # Define exported functions
 __all__ = [
     # Compatibility functions
-    'is_windows', 'is_unix', 'is_admin', 'is_root',
+    'is_windows', 'is_unix', 'is_wsl', 'is_admin', 'is_root',
     'fix_path_separators', 'fix_path_case', 'get_system_encoding',
     'get_system_temp_dir', 'get_home_dir', 'get_app_data_dir',
     'normalize_cross_platform_path', 'resolve_cross_platform_path',

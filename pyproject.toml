@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dazzle-filekit"
-version = "0.2.3"
+version = "0.2.4"
 description = "Cross-platform file operations toolkit with path handling, verification, and metadata preservation"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -31,7 +31,14 @@ classifiers = [
 ]
 keywords = ["file", "operations", "path", "verification", "hash", "metadata", "cross-platform"]
 dependencies = [
-    "pathlib;python_version<\"3.4\""
+    "pathlib;python_version<\"3.4\"",
+    # pywin32 powers the rich Windows metadata features in
+    # dazzle_filekit.metadata (SDDL ACL round-trip, ctime restoration,
+    # junction detection via DeviceIoControl, NTFS ADS enumeration).
+    # The module falls back to attrib-command behavior if pywin32 is
+    # missing, but the full feature set requires it. Pinned to >=305
+    # (first stable release after the build317 rename).
+    "pywin32>=305; sys_platform == \"win32\"",
 ]
 
 [project.optional-dependencies]
@@ -65,3 +72,4 @@ target-version = ["py39", "py310", "py311", "py312", "py313"]
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "--cov=dazzle_filekit --cov-report=term-missing"
+norecursedirs = ["_drafts", "__pycache__"]

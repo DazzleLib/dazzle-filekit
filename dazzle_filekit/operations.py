@@ -5,6 +5,7 @@ This module provides functions for file operations with attribute preservation
 across different platforms, including timestamps, permissions, and other metadata.
 """
 
+import json
 import os
 import sys
 import stat
@@ -19,6 +20,143 @@ from typing import Dict, List, Optional, Union, Tuple, Any, Set, Callable
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Atomic write primitives (v0.2.4)
+# ---------------------------------------------------------------------------
+
+
+def atomic_write_text(
+    path: Union[str, Path],
+    content: str,
+    *,
+    encoding: str = "utf-8",
+    newline: Optional[str] = None,
+) -> None:
+    """Atomically write text content to ``path``.
+
+    Writes ``content`` to a sibling ``.tmp`` file and then renames it to
+    ``path`` via ``os.replace`` (atomic on POSIX and Windows since Python 3.3).
+    Readers observing the file see either the old contents or the new
+    contents -- never a partial write.
+
+    Creates parent directories if they don't exist.
+
+    Args:
+        path: Destination file path.
+        content: Text content to write.
+        encoding: Text encoding (keyword-only, default ``utf-8``).
+        newline: Newline translation, passed to ``open()`` (keyword-only,
+            default None = universal).
+
+    Raises:
+        OSError: If the write or rename fails. The ``.tmp`` file is left
+            in place for inspection.
+
+    Pattern source: ``safedel/_store.py:_save_manifest`` and
+    ``safedel/_volumes.py:save_registry`` both used this idiom; this
+    function centralizes it.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding=encoding, newline=newline) as f:
+        f.write(content)
+    os.replace(str(tmp_path), str(path))
+
+
+def atomic_write_json(
+    path: Union[str, Path],
+    data: Any,
+    *,
+    indent: int = 2,
+    sort_keys: bool = False,
+    default: Optional[Callable[[Any], Any]] = str,
+    trailing_newline: bool = True,
+) -> None:
+    """Atomically write ``data`` as JSON to ``path``.
+
+    Thin wrapper around ``atomic_write_text(path, json.dumps(...))``.
+    The default ``default=str`` handles common non-JSON-native types
+    (``datetime``, ``Path``, ``pathlib.PurePath``, etc.) by stringifying
+    them -- matches safedel's ``_save_manifest`` behavior.
+
+    Args:
+        path: Destination JSON file path.
+        data: The object to serialize. Must be JSON-compatible or have
+            a string representation if non-native types are present.
+        indent: ``json.dumps`` indent (keyword-only, default 2).
+        sort_keys: ``json.dumps`` sort_keys (keyword-only, default False).
+        default: Fallback serializer for non-JSON types (keyword-only,
+            default ``str``). Set to ``None`` to get ``TypeError`` on
+            unknown types instead.
+        trailing_newline: Append a trailing newline (keyword-only,
+            default True, matching POSIX text file convention).
+
+    Raises:
+        TypeError: If ``data`` contains non-JSON types and ``default`` is None.
+        OSError: If the underlying write fails.
+    """
+    text = json.dumps(data, indent=indent, sort_keys=sort_keys, default=default)
+    if trailing_newline:
+        text += "\n"
+    atomic_write_text(path, text, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Link-safe tree copy (v0.2.4)
+# ---------------------------------------------------------------------------
+
+
+def copy_tree_preserving_links(
+    src: Union[str, Path],
+    dst: Union[str, Path],
+    *,
+    dirs_exist_ok: bool = False,
+    ignore: Optional[Callable[..., Any]] = None,
+    ignore_dangling_symlinks: bool = False,
+) -> Path:
+    """Copy a directory tree, preserving symlinks and junctions literally.
+
+    This is a wrapper around ``shutil.copytree`` with ``symlinks=True``
+    hard-wired. The ``symlinks=True`` behavior is the whole point: when
+    ``copytree`` encounters a symlink or junction, it copies the LINK
+    (recording the target path) rather than recursing into the target.
+
+    Why this matters: on Windows, the default ``symlinks=False`` will
+    traverse a junction and copy everything under it, which can loop
+    forever on self-referential junctions or pull in unexpectedly large
+    trees. This wrapper makes the safe behavior the default and the
+    name documents the intent.
+
+    Args:
+        src: Source directory path.
+        dst: Destination directory path.
+        dirs_exist_ok: If True, allow ``dst`` to exist (keyword-only,
+            default False -- matches shutil.copytree's default).
+        ignore: Callable ``(dir, contents) -> names_to_skip`` passed to
+            ``shutil.copytree`` (keyword-only).
+        ignore_dangling_symlinks: If True, skip symlinks whose target is
+            missing (keyword-only, default False -- by default
+            ``copytree`` raises on dangling links).
+
+    Returns:
+        The destination Path.
+
+    Pattern source: ``safedel/_recover.py:338`` and other safedel call
+    sites all used ``shutil.copytree(..., symlinks=True)``. Centralized
+    here so the safety property has a name.
+    """
+    result = shutil.copytree(
+        str(src),
+        str(dst),
+        symlinks=True,
+        ignore=ignore,
+        ignore_dangling_symlinks=ignore_dangling_symlinks,
+        dirs_exist_ok=dirs_exist_ok,
+    )
+    return Path(result)
 
 
 def copy_file(
@@ -163,50 +301,45 @@ def collect_file_metadata(path: Union[str, Path]) -> Dict[str, Any]:
     """
     Collect file metadata for preservation.
 
+    As of v0.2.4, this is a thin wrapper around
+    ``dazzle_filekit.metadata.collect_file_metadata`` which captures a
+    strict superset of v0.2.3's output:
+
+      - File mode, size, owner/group, timestamps (with ISO projections)
+      - **Windows**: attribute flag booleans (is_hidden/is_system/...),
+        SDDL ACL string (JSON-safe), owner/group as DOMAIN\\Name
+      - **Linux/macOS**: extended attributes (xattrs) as base64
+
+    Callers that only read the v0.2.3 fields are unaffected; the new keys
+    are additive. Use ``dazzle_filekit.metadata`` directly for access to
+    ``compare_metadata``, ``metadata_to_json``, etc.
+
     Args:
         path: Path to the file
 
     Returns:
         Dictionary of file metadata
     """
-    metadata = {}
-    path_obj = Path(path)
-
-    try:
-        # Get basic file stats
-        file_stat = path_obj.stat()
-
-        # Store file mode (permissions)
-        metadata['mode'] = file_stat.st_mode
-
-        # Store timestamps
-        metadata['timestamps'] = {
-            'modified': file_stat.st_mtime,
-            'accessed': file_stat.st_atime,
-            # Note: st_ctime means different things on Unix vs Windows
-            'created': file_stat.st_ctime
-        }
-
-        # Platform-specific metadata
-        if platform.system() == 'Windows':
-            metadata['windows'] = _collect_windows_metadata(path_obj)
-        else:
-            # Unix-specific metadata
-            metadata['unix'] = {
-                'uid': file_stat.st_uid,
-                'gid': file_stat.st_gid
-            }
-
-        return metadata
-
-    except Exception as e:
-        logger.error(f"Error collecting metadata for {path}: {e}")
-        return metadata
+    from .metadata import collect_file_metadata as _collect
+    return _collect(path)
 
 
 def apply_file_metadata(path: Union[str, Path], metadata: Dict[str, Any]) -> bool:
     """
     Apply metadata to a file.
+
+    As of v0.2.4, this is a thin wrapper around
+    ``dazzle_filekit.metadata.apply_file_metadata`` which honors all the
+    richer fields when present:
+
+      - **Windows**: SDDL ACL restoration via
+        ``ConvertStringSecurityDescriptorToSecurityDescriptorW``; creation
+        time restoration via ``SetFileTime`` + ``FILE_WRITE_ATTRIBUTES``
+      - **Linux/macOS**: extended attributes via ``os.setxattr``, with
+        ``com.apple.quarantine`` skipped on restore
+
+    Old (v0.2.3) manifests without the new fields restore correctly --
+    each advanced field is optional.
 
     Args:
         path: Path to the file
@@ -215,41 +348,8 @@ def apply_file_metadata(path: Union[str, Path], metadata: Dict[str, Any]) -> boo
     Returns:
         True if successful, False otherwise
     """
-    path_obj = Path(path)
-    success = True
-
-    try:
-        # Apply mode (permissions)
-        if 'mode' in metadata:
-            try:
-                os.chmod(path_obj, metadata['mode'])
-            except Exception as e:
-                logger.warning(f"Error applying permissions to {path}: {e}")
-                success = False
-
-        # Apply timestamps
-        if 'timestamps' in metadata:
-            timestamps = metadata['timestamps']
-            try:
-                os.utime(
-                    path_obj,
-                    (timestamps['accessed'], timestamps['modified'])
-                )
-            except Exception as e:
-                logger.warning(f"Error applying timestamps to {path}: {e}")
-                success = False
-
-        # Apply platform-specific metadata
-        if platform.system() == 'Windows' and 'windows' in metadata:
-            success = success and _apply_windows_metadata(path_obj, metadata['windows'])
-        elif platform.system() != 'Windows' and 'unix' in metadata:
-            success = success and _apply_unix_metadata(path_obj, metadata['unix'])
-
-        return success
-
-    except Exception as e:
-        logger.error(f"Error applying metadata to {path}: {e}")
-        return False
+    from .metadata import apply_file_metadata as _apply
+    return _apply(path, metadata)
 
 
 def _copy_with_robocopy(source: Path, destination: Path) -> bool:
@@ -302,131 +402,10 @@ def _copy_with_robocopy(source: Path, destination: Path) -> bool:
         return False
 
 
-def _collect_windows_metadata(path: Path) -> Dict[str, Any]:
-    """
-    Collect Windows-specific file metadata.
-
-    Args:
-        path: Path to the file
-
-    Returns:
-        Dictionary of Windows-specific metadata
-    """
-    windows_metadata = {}
-
-    if platform.system() != 'Windows':
-        return windows_metadata
-
-    try:
-        # Try to use pywin32 if available
-        try:
-            import win32api
-            import win32con
-
-            # Get file attributes
-            attrs = win32api.GetFileAttributes(str(path))
-            windows_metadata['attributes'] = attrs
-
-        except ImportError:
-            logger.debug("pywin32 not available, using limited Windows metadata collection")
-
-            # Use attrib command as fallback
-            try:
-                import subprocess
-                result = subprocess.run(['attrib', str(path)], capture_output=True, text=True)
-                if result.returncode == 0:
-                    attrs_line = result.stdout.strip()
-                    windows_metadata['attrib_output'] = attrs_line
-            except Exception as attrib_error:
-                logger.debug(f"Error running attrib command: {attrib_error}")
-
-        return windows_metadata
-
-    except Exception as e:
-        logger.error(f"Error collecting Windows metadata for {path}: {e}")
-        return windows_metadata
-
-
-def _apply_windows_metadata(path: Path, metadata: Dict[str, Any]) -> bool:
-    """
-    Apply Windows-specific metadata to a file.
-
-    Args:
-        path: Path to the file
-        metadata: Windows-specific metadata to apply
-
-    Returns:
-        True if successful, False otherwise
-    """
-    if platform.system() != 'Windows':
-        return False
-
-    success = True
-
-    try:
-        # Try to use pywin32 if available
-        try:
-            import win32api
-
-            # Apply file attributes
-            if 'attributes' in metadata:
-                win32api.SetFileAttributes(str(path), metadata['attributes'])
-
-        except ImportError:
-            logger.debug("pywin32 not available, using limited Windows metadata application")
-
-            # Use attrib command as fallback
-            if 'attrib_output' in metadata:
-                import subprocess
-                attrib_str = metadata['attrib_output']
-
-                # Parse attrib output and apply
-                if 'A' in attrib_str:
-                    subprocess.run(['attrib', '+A', str(path)])
-                if 'R' in attrib_str:
-                    subprocess.run(['attrib', '+R', str(path)])
-                if 'H' in attrib_str:
-                    subprocess.run(['attrib', '+H', str(path)])
-                if 'S' in attrib_str:
-                    subprocess.run(['attrib', '+S', str(path)])
-
-        return success
-
-    except Exception as e:
-        logger.error(f"Error applying Windows metadata to {path}: {e}")
-        return False
-
-
-def _apply_unix_metadata(path: Path, metadata: Dict[str, Any]) -> bool:
-    """
-    Apply Unix-specific metadata to a file.
-
-    Args:
-        path: Path to the file
-        metadata: Unix-specific metadata to apply
-
-    Returns:
-        True if successful, False otherwise
-    """
-    if platform.system() == 'Windows':
-        return False
-
-    success = True
-
-    try:
-        # Apply owner and group
-        if 'uid' in metadata and 'gid' in metadata:
-            try:
-                os.chown(path, metadata['uid'], metadata['gid'])
-            except Exception as e:
-                logger.warning(f"Error applying owner/group to {path}: {e}")
-                success = False
-
-        return success
-
-    except Exception as e:
-        logger.error(f"Error applying Unix metadata to {path}: {e}")
-        return False
+# v0.2.4: the old _collect_windows_metadata, _apply_windows_metadata, and
+# _apply_unix_metadata helpers were removed. The richer equivalents live in
+# dazzle_filekit.metadata (which collect_file_metadata / apply_file_metadata
+# delegate to above). See BREAKING_CHANGES.md for the migration notes.
 
 
 def copy_files_with_path(

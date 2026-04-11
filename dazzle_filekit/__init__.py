@@ -44,7 +44,8 @@ from .utils.compat import (
     resolve_cross_platform_path,
     path_exists_cross_platform,
     is_windows,
-    is_unix
+    is_unix,
+    is_wsl,
 )
 
 from .utils.disk import (
@@ -66,7 +67,11 @@ from .operations import (
     create_directory_structure,
     remove_file,
     remove_directory,
-    create_symlink
+    create_symlink,
+    # v0.2.4 primitives
+    atomic_write_text,
+    atomic_write_json,
+    copy_tree_preserving_links,
 )
 
 from .verification import (
@@ -80,7 +85,19 @@ from .verification import (
     verify_copied_files
 )
 
-__version__ = '0.2.3'
+# Expose dazzle_filekit.metadata as a public submodule so callers can do:
+#     from dazzle_filekit import metadata
+#     md = metadata.collect_file_metadata(path)
+# alongside the top-level convenience imports from .operations above.
+from . import metadata  # noqa: F401
+from .metadata import (
+    is_win32_available,
+    restore_windows_creation_time,
+    compare_metadata,
+    metadata_to_json,
+)
+
+__version__ = '0.2.4'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -167,6 +184,7 @@ __all__ = [
     'path_exists_cross_platform',
     'is_windows',
     'is_unix',
+    'is_wsl',
 
     # Disk space utilities
     'DiskUsage',
@@ -187,6 +205,18 @@ __all__ = [
     'remove_file',
     'remove_directory',
     'create_symlink',
+
+    # v0.2.4 primitives
+    'atomic_write_text',
+    'atomic_write_json',
+    'copy_tree_preserving_links',
+
+    # Rich metadata module (v0.2.4)
+    'metadata',
+    'is_win32_available',
+    'restore_windows_creation_time',
+    'compare_metadata',
+    'metadata_to_json',
     
     # Verification functions
     'calculate_file_hash',

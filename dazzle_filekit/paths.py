@@ -16,85 +16,219 @@ from typing import Dict, List, Optional, Union, Tuple, Any
 logger = logging.getLogger(__name__)
 
 
-def normalize_path(path: Union[str, Path]) -> Path:
+# MSYS-style path pattern: /c/..., /c/, /c, or /d/... etc.
+# Trailing slash and subpath are optional; bare /c matches.
+_MSYS_DRIVE_RE = re.compile(r"^/([a-zA-Z])(/.*)?$")
+# WSL mount pattern: /mnt/c/..., /mnt/c/, /mnt/c, etc.
+_WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
+# Windows drive-letter pattern: C:\..., C:/..., c:..., etc.
+_WIN_DRIVE_RE = re.compile(r"^([a-zA-Z]):[\\/](.*)$")
+
+
+def _prepare_path_format(path_str: str) -> str:
+    r"""Shared format-layer conversions for all path normalizers.
+
+    Handles "portable path format" concerns that are the same regardless
+    of whether the caller wants link-following or link-safe behavior:
+
+      - whitespace trimming
+      - tilde expansion (``~/foo``, ``~user/foo``)
+      - env var expansion (``%USERPROFILE%``, ``$HOME``, ``${HOME}``)
+      - Platform-direction drive conversion (bidirectional):
+          * On Windows: ``/mnt/c/...`` or ``/c/...`` -> ``C:\...``
+          * On Unix:    ``C:\...`` or ``C:/...`` -> ``/c/...``
+      - forward slash -> OS-native separator
+      - ``\\?\`` extended-length prefix strip (Windows only)
+
+    Deliberately does NOT:
+
+      - collapse . or .. segments (caller's choice -- lexical vs POSIX)
+      - absolutize a relative path
+      - follow symlinks
+      - do filesystem I/O
+
+    The drive-conversion direction is **platform-aware**: the function
+    converts towards the current OS's native format. On Linux, a path
+    like ``/c/Users/foo`` is a plain absolute Linux path and is LEFT
+    ALONE (it is not interpreted as MSYS drive ``C:``). On Windows, the
+    same input is converted to ``C:\Users\foo``.
+
+    This is the single source of truth for "what counts as a portable
+    path format" in filekit. Both ``normalize_path`` (link-following)
+    and ``normalize_path_no_resolve`` (link-safe) layer on top of it.
     """
-    Normalize a path to its canonical form.
+    path_str = path_str.strip()
 
-    This RESOLVES symlinks and junctions to their targets. Use
-    normalize_path_no_resolve() when you need the literal link path.
-
-    Args:
-        path: The path to normalize
-
-    Returns:
-        The normalized path as a Path object
-    """
-    path_obj = Path(path).expanduser()
-
-    try:
-        # Use resolve() to handle symlinks and relative paths
-        return path_obj.resolve()
-    except (OSError, RuntimeError):
-        # Fall back to absolute() if resolve() fails (e.g., non-existent path)
-        return path_obj.absolute()
-
-
-# MSYS-style path pattern: /c/ or /d/ etc.
-_MSYS_DRIVE_RE = re.compile(r"^/([a-zA-Z])/")
-
-
-def normalize_path_no_resolve(path: Union[str, Path]) -> Path:
-    """
-    Normalize a path WITHOUT resolving symlinks or junctions.
-
-    Use this instead of normalize_path() when you need the literal path to
-    a symlink, junction, or hardlink -- not the path it points to.
-
-    Handles:
-        /c/Users/foo     ->  C:\\Users\\foo       (MSYS/Git Bash style)
-        c:/Users/foo     ->  C:\\Users\\foo       (forward-slash Windows)
-        ~/foo            ->  C:\\Users\\Me\\foo   (tilde expansion)
-        ./relative       ->  C:\\cwd\\relative    (relative to cwd)
-        \\\\?\\C:\\...   ->  C:\\...              (extended-length prefix)
-
-    Unlike normalize_path() and os.path.abspath(), this function does NOT
-    follow symlinks. On Windows, os.path.abspath() can resolve symlinks
-    and junctions, which destroys the distinction between a link and its
-    target. This function uses os.path.normpath() + manual cwd join instead.
-
-    Args:
-        path: The path to normalize
-
-    Returns:
-        The normalized path as a Path object
-    """
-    path_str = str(path).strip()
-
-    # Expand ~ first
+    # Expand ~ first (handled by os.path.expanduser which is platform-aware)
     path_str = os.path.expanduser(path_str)
 
-    # Convert MSYS /c/path -> C:/path (before any backslash conversion)
-    m = _MSYS_DRIVE_RE.match(path_str)
-    if m:
-        drive = m.group(1).upper()
-        path_str = drive + ":" + path_str[2:]
+    # Expand env vars: %VAR% and $VAR / ${VAR}. On Windows, expandvars
+    # understands both styles; on Unix, only $VAR / ${VAR}. Unknown vars
+    # are left as literals, which is the same behavior fixpath relies on.
+    path_str = os.path.expandvars(path_str)
 
-    # Normalize slashes to OS native
-    path_str = path_str.replace("/", os.sep)
+    if sys.platform == "win32":
+        # On Windows, normalize toward the native C:\ form.
 
-    # Strip extended-length prefix \\?\ on Windows
-    if sys.platform == "win32" and path_str.startswith("\\\\?\\"):
-        path_str = path_str[4:]
+        # WSL /mnt/c/... -> C:/... (must check BEFORE MSYS since
+        # /mnt/c also partially matches single-letter patterns).
+        #
+        # A bare /mnt/c (no subpath) maps to drive root "C:/", not
+        # "C:". Bare "C:" is NOT absolute on Windows (os.path.isabs
+        # returns False) because it means "drive-relative", so we
+        # produce "C:/" to get the drive root.
+        m = _WSL_MNT_RE.match(path_str)
+        if m:
+            drive = m.group(1).upper()
+            rest = m.group(2) or "/"
+            path_str = drive + ":" + rest
 
-    # Normalize . and .. segments WITHOUT resolving symlinks
+        # MSYS /c/... -> C:/...
+        m = _MSYS_DRIVE_RE.match(path_str)
+        if m:
+            drive = m.group(1).upper()
+            rest = m.group(2) or "/"
+            path_str = drive + ":" + rest
+
+        # Normalize slashes to OS native
+        path_str = path_str.replace("/", os.sep)
+
+        # Strip extended-length prefix \\?\
+        if path_str.startswith("\\\\?\\"):
+            path_str = path_str[4:]
+    else:
+        # On Unix (Linux/macOS), normalize toward /c/ style.
+        #
+        # A Windows-style path like C:\Users\foo or C:/Users/foo gets
+        # rewritten to /c/Users/foo so downstream code on Unix can
+        # handle it. This is the counterpart to the MSYS conversion
+        # above -- it only runs on Unix so that a legitimate Linux
+        # path like /c/Users/foo stays untouched.
+        m = _WIN_DRIVE_RE.match(path_str)
+        if m:
+            drive = m.group(1).lower()
+            rest = m.group(2).replace("\\", "/")
+            path_str = f"/{drive}/{rest}"
+        else:
+            # No drive letter -- just convert backslashes to forward slashes
+            # in case a caller passed a mixed-separator path.
+            path_str = path_str.replace("\\", "/")
+
+    return path_str
+
+
+def normalize_cross_platform_path(
+    path: Union[str, Path],
+    *,
+    resolve: bool = False,
+) -> Path:
+    r"""Canonical path normalizer. Handles portable path formats across platforms.
+
+    **This is the preferred path-normalization entry point in filekit.**
+    ``normalize_path()`` and ``normalize_path_no_resolve()`` are thin
+    backwards-compatibility wrappers around this function.
+
+    Applies all portable-format conversions via ``_prepare_path_format``:
+
+        /c/Users/foo         ->  C:\Users\foo       (MSYS/Git Bash style)
+        /mnt/c/Users/foo     ->  C:\Users\foo       (WSL style)
+        c:/Users/foo         ->  C:\Users\foo       (forward-slash Windows)
+        ~/foo                ->  C:\Users\Me\foo    (tilde expansion)
+        %USERPROFILE%/foo    ->  C:\Users\Me\foo    (env var, Windows)
+        $HOME/foo            ->  /home/me/foo       (env var, Unix)
+        ./relative           ->  <cwd>/relative     (relative to cwd)
+        \\?\C:\...           ->  C:\...             (extended-length prefix)
+
+    Then, based on ``resolve``:
+
+      - ``resolve=False`` (default): collapses ``.`` and ``..`` LEXICALLY
+        via ``os.path.normpath`` (does not follow symlinks), and
+        absolutizes via cwd join. Preserves the literal link path.
+
+      - ``resolve=True``: calls ``Path.resolve()`` which follows symlinks
+        and junctions to their target (POSIX ``realpath`` semantics).
+        Falls back to ``.absolute()`` for paths that don't exist.
+
+    Args:
+        path: The path to normalize.
+        resolve: If True, follow symlinks. If False (default), preserve
+            the literal link path and use lexical ``..`` collapsing.
+            This is a keyword-only argument.
+
+    Returns:
+        The normalized path as a Path object.
+
+    Examples:
+        # Link-safe (default) -- preserves a symlink's literal path
+        normalize_cross_platform_path("/mnt/c/code/my-link")
+        # -> Path("C:/code/my-link")
+
+        # Link-following -- follows a symlink to its target
+        normalize_cross_platform_path("/mnt/c/code/my-link", resolve=True)
+        # -> Path("C:/code/actual-target")
+    """
+    path_str = _prepare_path_format(str(path))
+
+    if resolve:
+        path_obj = Path(path_str)
+        # Absolutize before resolve() to work around a Python 3.9 quirk on
+        # Windows where ``Path('./a/b').resolve()`` returns a relative path
+        # for nonexistent inputs instead of prepending cwd. On Python 3.10+
+        # this is a no-op (resolve() handles the absolutization itself).
+        if not path_obj.is_absolute():
+            path_obj = path_obj.absolute()
+        try:
+            # Use Path.resolve() to follow symlinks/junctions (POSIX realpath).
+            return path_obj.resolve()
+        except (OSError, RuntimeError):
+            # Fall back to the absolute (pre-resolve) form if resolve() fails.
+            return path_obj
+
+    # Link-safe: lexical normpath + cwd-based absolutize.
+    # We use os.path.normpath rather than os.path.abspath here because on
+    # Windows, abspath calls GetFullPathName which can resolve links, which
+    # would destroy the link/target distinction.
     path_str = os.path.normpath(path_str)
-
-    # Make absolute without resolving links
-    # (os.path.abspath calls GetFullPathName on Windows which can resolve links)
     if not os.path.isabs(path_str):
         path_str = os.path.normpath(os.path.join(os.getcwd(), path_str))
 
     return Path(path_str)
+
+
+def normalize_path(path: Union[str, Path]) -> Path:
+    """Normalize a path, FOLLOWING symlinks.
+
+    Thin wrapper for ``normalize_cross_platform_path(path, resolve=True)``.
+    Kept for API stability -- referenced by README examples and used by
+    ``dazzlecmd/projects/core/links/links.py``. The preferred entry point
+    for new code is ``normalize_cross_platform_path(path, resolve=True)``.
+
+    Args:
+        path: The path to normalize
+
+    Returns:
+        The normalized, symlink-followed path as a Path object.
+    """
+    return normalize_cross_platform_path(path, resolve=True)
+
+
+def normalize_path_no_resolve(path: Union[str, Path]) -> Path:
+    """Normalize a path WITHOUT resolving symlinks or junctions.
+
+    Thin wrapper for ``normalize_cross_platform_path(path, resolve=False)``.
+    Kept for API stability -- used by
+    ``dazzlecmd/projects/core/safedel/_classifier.py``. The preferred
+    entry point for new code is ``normalize_cross_platform_path(path)``
+    (the default ``resolve=False`` already does link-safe normalization).
+
+    Args:
+        path: The path to normalize
+
+    Returns:
+        The normalized path as a Path object, with the literal link
+        path preserved (not its target).
+    """
+    return normalize_cross_platform_path(path, resolve=False)
 
 
 def is_same_file(path1: Union[str, Path], path2: Union[str, Path]) -> bool:

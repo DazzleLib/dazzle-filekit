@@ -57,9 +57,16 @@ class TestNormalizeCrossPlatformPath:
 
     @pytest.mark.skipif(os.name != "nt", reason="Windows-only test")
     def test_git_bash_drive_only(self):
-        """Git Bash /c with no trailing path."""
+        """Git Bash /c with no trailing path.
+
+        v0.2.3 returned Path('C:') which is NOT an absolute path on
+        Windows (os.path.isabs('C:') is False -- it means 'drive-relative').
+        v0.2.4 treats a bare /c as the drive root 'C:\\' so the result is
+        genuinely absolute.
+        """
         result = normalize_cross_platform_path("/c")
-        assert str(result) == "C:"
+        assert str(result).startswith("C:")
+        assert result.is_absolute()
 
     @pytest.mark.skipif(os.name != "nt", reason="Windows-only test")
     def test_git_bash_drive_with_slash(self):
@@ -97,10 +104,18 @@ class TestNormalizeCrossPlatformPath:
         assert isinstance(result, Path)
 
     def test_empty_string(self):
-        """Empty string produces a Path."""
+        """Empty string absolutizes to cwd in v0.2.4.
+
+        v0.2.3 returned Path('.'), v0.2.4 unifies behavior with
+        normalize_path_no_resolve (which already returned cwd) by
+        routing through the canonical _prepare_path_format + cwd-join
+        pipeline. An empty relative path means "here", so cwd is a
+        more useful answer than a bare dot.
+        """
         result = normalize_cross_platform_path("")
         assert isinstance(result, Path)
-        assert str(result) == "."
+        assert result.is_absolute()
+        assert str(result) == os.getcwd()
 
 
 class TestPathExistsCrossPlatform:

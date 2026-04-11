@@ -266,28 +266,90 @@ def is_symlink(path: Union[str, Path]) -> bool:
     return Path(path).is_symlink()
 
 def is_junction(path: Union[str, Path]) -> bool:
-    """
-    Check if a path is a Windows junction point.
-    
+    """Check if a path is a Windows junction point (NOT a symlink).
+
+    This is the distinction that matters for safe deletion and tree
+    traversal: junctions and symlinks both have the reparse-point
+    attribute set, but they have different reparse tags
+    (``IO_REPARSE_TAG_MOUNT_POINT`` vs ``IO_REPARSE_TAG_SYMLINK``) and
+    different cross-platform semantics.
+
+    Implementation uses ``DeviceIoControl(FSCTL_GET_REPARSE_POINT)`` to
+    read the reparse tag and check it's specifically
+    ``IO_REPARSE_TAG_MOUNT_POINT``. This is the only reliable method.
+
+    History: in filekit <= v0.2.3, this function referenced
+    ``win32file.FILE_ATTRIBUTE_REPARSE_POINT`` (which doesn't exist --
+    the constant lives in ``win32con``), and the bare ``except:`` clause
+    silently returned False for everything, including real junctions.
+    Additionally, even if the attribute check had worked, it would have
+    misclassified directory symlinks as junctions since they share the
+    same ``FILE_ATTRIBUTE_REPARSE_POINT`` flag. Fixed in v0.2.4 by
+    porting the correct implementation from
+    ``dazzlecmd/projects/core/links/links.py:_is_junction_win``.
+
     Args:
         path: Path to check
-        
+
     Returns:
-        True if the path is a junction, False otherwise
+        True if the path is specifically a junction (mount-point reparse
+        point), False otherwise. Returns False for symlinks, plain
+        directories, files, and nonexistent paths.
     """
     if not IS_WINDOWS:
         return False
-    
-    path_obj = Path(path)
-    
-    # Check if the path exists and is a directory
-    if not path_obj.exists() or not path_obj.is_dir():
-        return False
-    
+
     try:
-        import win32file
-        attributes = win32file.GetFileAttributes(str(path_obj))
-        return (attributes & win32file.FILE_ATTRIBUTE_REPARSE_POINT) != 0
-    except:
-        logger.debug("Cannot check for junction point - win32file module not available")
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+
+        # Check reparse-point attribute first -- skip the expensive
+        # DeviceIoControl call for non-reparse-point paths.
+        FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+        attrs = kernel32.GetFileAttributesW(str(path))
+        if attrs == -1 or not (attrs & FILE_ATTRIBUTE_REPARSE_POINT):
+            return False
+
+        # Open with FILE_FLAG_OPEN_REPARSE_POINT so we get the link itself,
+        # not its target. FILE_FLAG_BACKUP_SEMANTICS is required for dirs.
+        OPEN_EXISTING = 3
+        FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+        FILE_SHARE_READ_WRITE_DELETE = 0x01 | 0x02 | 0x04
+
+        handle = kernel32.CreateFileW(
+            str(path), 0,
+            FILE_SHARE_READ_WRITE_DELETE,
+            None, OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        if handle == wintypes.HANDLE(-1).value:
+            # Fallback: if the path is a reparse point but os.path.islink
+            # returns False, it's probably a junction (not a symlink).
+            return not os.path.islink(str(path))
+
+        try:
+            IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+            FSCTL_GET_REPARSE_POINT = 0x000900A8
+            buf = ctypes.create_string_buffer(16384)
+            bytes_returned = wintypes.DWORD(0)
+
+            ok = kernel32.DeviceIoControl(
+                handle, FSCTL_GET_REPARSE_POINT,
+                None, 0, buf, 16384,
+                ctypes.byref(bytes_returned), None,
+            )
+            if ok:
+                # Reparse tag is the first 4 bytes of the REPARSE_DATA_BUFFER
+                tag = int.from_bytes(buf[:4], byteorder="little")
+                return tag == IO_REPARSE_TAG_MOUNT_POINT
+            else:
+                return not os.path.islink(str(path))
+        finally:
+            kernel32.CloseHandle(handle)
+    except (OSError, AttributeError, ImportError) as e:
+        logger.debug(f"is_junction({path}) failed: {e}")
         return False

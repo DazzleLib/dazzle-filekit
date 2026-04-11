@@ -5,6 +5,71 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-04-11
+
+### Added
+
+**`dazzle_filekit.metadata` module** (byte-identical port from preservelib, now public):
+- Rich `collect_file_metadata()` and `apply_file_metadata()` delegates that capture a strict superset of v0.2.3's output
+- `restore_windows_creation_time()` -- NTFS ctime restoration via `pywin32.SetFileTime` with `FILE_WRITE_ATTRIBUTES=0x100`, `FILE_FLAG_BACKUP_SEMANTICS` for directories, and the readonly-clear-then-restore dance
+- `is_win32_available()` -- cached pywin32 availability probe
+- `compare_metadata()` / `metadata_to_json()` / `get_metadata_summary()` -- diffing and JSON-safe projection helpers
+- `collect_timestamp_info()` / `apply_timestamp_strategy()` -- timestamp-only workflow helpers
+- SDDL ACL round-trip on Windows (JSON-serializable, replaces non-serializable pywin32 handle objects)
+- Unix xattrs capture/apply via `os.listxattr`/`getxattr`/`setxattr` (skips `com.apple.quarantine` on restore to avoid security surprises)
+- Windows attribute flag booleans (`is_hidden`, `is_system`, `is_readonly`, `is_archive`) derived from the attribute bitmask
+- Owner/group as `DOMAIN\Name` strings
+- File `size` field, ISO timestamp projections (`modified_iso`, `accessed_iso`, `created_iso`)
+
+**`dazzle_filekit.operations` primitives:**
+- `atomic_write_text(path, content, *, encoding='utf-8', newline=None)` -- tmp+`os.replace` atomic text write; creates parent dirs; atomic on Windows since Python 3.3
+- `atomic_write_json(path, data, *, indent=2, sort_keys=False, default=str, trailing_newline=True)` -- thin JSON wrapper; `default=str` handles `Path`/`datetime`/etc. out of the box
+- `copy_tree_preserving_links(src, dst, *, dirs_exist_ok=False, ignore=None, ignore_dangling_symlinks=False)` -- `shutil.copytree` wrapper with `symlinks=True` hard-wired and documented intent
+
+**`dazzle_filekit.platform.windows`** (NTFS alternate data streams):
+- `detect_alternate_streams(path)` -- enumerates ADS via ctypes `FindFirstStreamW`/`FindNextStreamW`; filters out `::$DATA` and `:Zone.Identifier:$DATA` (browser download markers)
+- `has_significant_ads(path)` -- returns True if any non-ignored stream exists
+
+**`dazzle_filekit.utils.compat`:**
+- `is_wsl()` -- WSL detection via `WSL_DISTRO_NAME` env var + `/proc/version` scan; returns False on non-Linux platforms
+
+**New runtime dependency:**
+- `pywin32 >= 305` on Windows (conditional marker, no-op on Linux/macOS). Powers SDDL ACLs, ctime restoration, junction detection, and ADS enumeration. The module falls back to `attrib` command if pywin32 is missing, but the rich feature set requires it.
+
+### Changed
+
+**Path normalization consolidated via shared `_prepare_path_format` helper:**
+- `normalize_cross_platform_path(path, *, resolve=False)` is now the **canonical** path normalizer. The new `resolve=` keyword-only parameter optionally follows symlinks via `Path.resolve()`.
+- `normalize_path(path)` and `normalize_path_no_resolve(path)` are now **thin backwards-compatibility wrappers** around the canonical function. They preserve their v0.2.3 signatures and behavior; their docstrings note that `normalize_cross_platform_path` is the preferred entry point for new code.
+- `normalize_cross_platform_path` gained tilde expansion, env var expansion (`%USERPROFILE%` / `$HOME`), relative-to-absolute via cwd, `os.path.normpath` `..` collapsing, and `\\?\` extended-length prefix stripping on Windows. This was the v0.2.3 behavior gap that made it less capable than `normalize_path_no_resolve`; now they're equivalent.
+- `normalize_path` and `normalize_path_no_resolve` gained WSL `/mnt/c/` conversion (only `normalize_cross_platform_path` had it in v0.2.3).
+- Platform-direction drive conversion is now **platform-aware and bidirectional**: on Windows, `/mnt/c/Users/foo` and `/c/Users/foo` become `C:\Users\foo`; on Linux, `C:\Users\foo` and `C:/Users/foo` become `/c/Users/foo`. A legitimate Linux path like `/c/Users/foo` is no longer misinterpreted as an MSYS drive on Linux.
+- Bare `/c` (MSYS drive with no subpath) now maps to drive root `C:\` rather than the drive-relative `C:` (which `os.path.isabs` doesn't consider absolute).
+
+**Metadata API is now richer by default:**
+- `operations.collect_file_metadata` and `operations.apply_file_metadata` delegate to the new `metadata.py` module. No signature changes; the returned dict is a strict superset.
+
+### Fixed
+
+**`validation.is_junction(path)`** -- the v0.2.3 implementation referenced `win32file.FILE_ATTRIBUTE_REPARSE_POINT`, which does not exist (the constant lives in `win32con`). The bare `except:` clause silently swallowed the `AttributeError` and returned `False` for everything -- including real junctions. Fixed in v0.2.4 by porting the correct `DeviceIoControl(FSCTL_GET_REPARSE_POINT)` implementation from `dazzlecmd/projects/core/links/links.py`. The fix also correctly distinguishes junctions (`IO_REPARSE_TAG_MOUNT_POINT`) from directory symlinks (`IO_REPARSE_TAG_SYMLINK`), which the original version would have misclassified even if the attribute lookup had worked.
+
+**`normalize_path()` / `normalize_cross_platform_path(..., resolve=True)` on Python 3.9 Windows** -- `Path.resolve()` on Python 3.9 Windows returns a *relative* `WindowsPath` for nonexistent relative inputs instead of prepending cwd. This is a Python 3.9 behavior quirk that was fixed in 3.10+, but it left `normalize_path("./a/b/file.txt")` returning `Path("a/b/file.txt")` on Python 3.9 Windows -- callers expecting an absolute path got a surprise. Caught by `tests/characterization/test_paths_v023_baseline.py::test_relative_path_resolved_against_cwd` on the v0.2.4 CI matrix (Windows Python 3.9 failed, 14 other jobs green). Fixed by pre-absolutizing via `Path.absolute()` before `.resolve()` in the `resolve=True` branch of `normalize_cross_platform_path`. On Python 3.10+ this is a no-op since `.resolve()` handles absolutization itself. Latent bug also existed in v0.2.3 but was never tested.
+
+### Infrastructure
+
+- `API_STABILITY.md` + `tests/test_import_stability.py` -- locked-in public API surface with 34 canary assertions covering every external caller (claude-session-logger, dazzlecmd safedel/fixpath/links, github-traffic-tracker, preservelib, README examples).
+- `BREAKING_CHANGES.md` -- forward-looking log with Phase 4 edge-case target matrix and migration procedures.
+- `docs/preservelib-integration.md` -- guide for preservelib to depend on filekit and the layering contract (primitives vs workflow).
+- `tests/test_paths_platform_simulation.py` -- 23 tests that monkeypatch `sys.platform` to exercise both the Windows-direction and Unix-direction branches of `_prepare_path_format` from a single host OS. Catches the exact class of bug that broke WSL on 2026-04-11 while the Windows suite was 208/208 green.
+- `scripts/run-cross-platform-tests.sh` -- convenience wrapper for running the suite on both Windows and WSL from a single command, for local dev cross-checking.
+- Test count: **241 passing + 9 skipped on Windows**, **200 passing + 50 skipped on Linux (WSL)**. Zero failures on either platform. Stability canary: 54 assertions green.
+
+### Out of scope (deferred)
+
+- safedel migration to the new filekit primitives (`atomic_write_json`, `copy_tree_preserving_links`, `metadata` module). filekit v0.2.4 is backwards-compatible, so safedel continues to work unmodified. A follow-up commit can rewire safedel's internal atomic-write helpers and its `_lib/preservelib/metadata.py` copy to point at filekit.
+- Renaming or removing any locked symbol in `API_STABILITY.md`.
+- Upstream `C:\code\preserve\preservelib\` reconciliation with safedel's diverged rich copy.
+
 ## [0.2.3] - 2026-04-10
 
 ### Added
@@ -20,8 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `resolve_cross_platform_path()` - Bidirectional path probing that tries alternate platform formats when the normalized path doesn't exist
-  - On Windows: probes WSL `/mnt/c/` -> `C:\`, MSYS `/c/` -> `C:\`, and MSYS-mangled WSL paths (where Git Bash prepends its install dir to `/mnt/c/...`)
-  - On Linux/macOS: probes Windows `C:\` -> `/mnt/c/` (WSL) or `/c/` (MSYS)
+  - On Windows: probes WSL `/mnt/c/` → `C:\`, MSYS `/c/` → `C:\`, and MSYS-mangled WSL paths (where Git Bash prepends its install dir to `/mnt/c/...`)
+  - On Linux/macOS: probes Windows `C:\` → `/mnt/c/` (WSL) or `/c/` (MSYS)
   - Returns the first existing candidate, or the normalized form if none exist
 
 ### Changed

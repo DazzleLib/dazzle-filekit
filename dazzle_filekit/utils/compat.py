@@ -30,11 +30,42 @@ def is_windows() -> bool:
 def is_unix() -> bool:
     """
     Check if the current platform is Unix-like (Linux, macOS, etc.).
-    
+
     Returns:
         bool: True if Unix-like, False otherwise
     """
     return PLATFORM in ('linux', 'darwin', 'freebsd', 'openbsd', 'netbsd')
+
+
+def is_wsl() -> bool:
+    """Check if the current Python process is running inside WSL.
+
+    Detection strategy:
+      1. Check for ``WSL_DISTRO_NAME`` environment variable (set by WSL 2+)
+      2. Fall back to scanning ``/proc/version`` for ``microsoft`` or ``wsl``
+      3. Return False on non-Linux platforms
+
+    Returns:
+        True if running inside WSL, False otherwise.
+
+    Examples:
+        >>> if is_wsl():
+        ...     print("Running in WSL -- /mnt/c/ is DrvFs")
+    """
+    if PLATFORM != "linux":
+        return False
+
+    # WSL 2+ sets this env var
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+
+    # Fallback: scan /proc/version
+    try:
+        with open("/proc/version", "r") as f:
+            version_str = f.read().lower()
+        return "microsoft" in version_str or "wsl" in version_str
+    except OSError:
+        return False
 
 def is_admin() -> bool:
     """
@@ -184,68 +215,16 @@ def get_app_data_dir(app_name: str) -> Path:
         xdg_config_home = os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))
         return Path(xdg_config_home) / app_name
 
-def normalize_cross_platform_path(path: Union[str, Path]) -> Path:
-    """
-    Normalize a path from various cross-platform formats to native format.
-
-    Handles conversion of:
-    - Git Bash style: /c/Users/... -> C:/Users/... (on Windows)
-    - WSL style: /mnt/c/Users/... -> C:/Users/... (on Windows)
-    - Windows backslashes: C:\\Users\\... -> C:/Users/... (normalized)
-    - Forward slashes: preserved on Unix, converted on Windows
-
-    Args:
-        path: Path string in any of the supported formats
-
-    Returns:
-        Path object normalized for the current platform
-
-    Examples:
-        # On Windows:
-        normalize_cross_platform_path("/c/Users/foo")  # -> Path("C:/Users/foo")
-        normalize_cross_platform_path("/mnt/c/Users/foo")  # -> Path("C:/Users/foo")
-        normalize_cross_platform_path("C:\\Users\\foo")  # -> Path("C:/Users/foo")
-
-        # On Unix:
-        normalize_cross_platform_path("C:\\Users\\foo")  # -> Path("/c/Users/foo")
-    """
-    import re
-
-    path_str = str(path)
-
-    if is_windows():
-        # On Windows, convert Unix-style paths to Windows-style
-
-        # Handle Git Bash style: /c/Users/... -> C:/Users/...
-        git_bash_match = re.match(r'^/([a-zA-Z])(/.*)?$', path_str)
-        if git_bash_match:
-            drive = git_bash_match.group(1).upper()
-            rest = git_bash_match.group(2) or ''
-            path_str = f"{drive}:{rest}"
-
-        # Handle WSL style: /mnt/c/Users/... -> C:/Users/...
-        wsl_match = re.match(r'^/mnt/([a-zA-Z])(/.*)?$', path_str)
-        if wsl_match:
-            drive = wsl_match.group(1).upper()
-            rest = wsl_match.group(2) or ''
-            path_str = f"{drive}:{rest}"
-
-        # Normalize slashes for Path on Windows (both work, but be consistent)
-        path_str = path_str.replace('/', '\\')
-    else:
-        # On Unix, convert Windows-style paths to Unix-style
-
-        # Handle Windows paths: C:\Users\... or C:/Users/... -> /c/Users/...
-        windows_match = re.match(r'^([a-zA-Z]):[\\/](.*)$', path_str)
-        if windows_match:
-            drive = windows_match.group(1).lower()
-            rest = windows_match.group(2).replace('\\', '/')
-            path_str = f"/{drive}/{rest}"
-        else:
-            # Just normalize backslashes to forward slashes
-            path_str = path_str.replace('\\', '/')
-
-    return Path(path_str)
+# v0.2.4: normalize_cross_platform_path moved to dazzle_filekit.paths as the
+# canonical path normalizer (now with an optional ``resolve=`` kwarg). The
+# re-export below keeps existing imports working:
+#
+#     from dazzle_filekit.utils.compat import normalize_cross_platform_path
+#
+# Prefer the direct import from dazzle_filekit for new code:
+#
+#     from dazzle_filekit import normalize_cross_platform_path
+from ..paths import normalize_cross_platform_path  # noqa: F401
 
 
 def resolve_cross_platform_path(path: Union[str, Path]) -> Path:
