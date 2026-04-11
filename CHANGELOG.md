@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Infrastructure
 
-- `API_STABILITY.md` + `tests/test_import_stability.py` -- locked-in public API surface with 34 canary assertions covering every external caller (claude-session-logger, dazzlecmd safedel/fixpath/links, github-traffic-tracker, preservelib, README examples).
+- `docs/api-stability.md` + `tests/test_import_stability.py` -- locked-in public API surface with 54 canary assertions covering every external caller (claude-session-logger, dazzlecmd safedel/fixpath/links, github-traffic-tracker, preservelib, README examples). (Moved from repo root to `docs/` during the v0.2.4 doc-organization pass; contributor-facing, not consumer-facing.)
 - `BREAKING_CHANGES.md` -- forward-looking log with Phase 4 edge-case target matrix and migration procedures.
 - `docs/preservelib-integration.md` -- guide for preservelib to depend on filekit and the layering contract (primitives vs workflow).
 - `tests/test_paths_platform_simulation.py` -- 23 tests that monkeypatch `sys.platform` to exercise both the Windows-direction and Unix-direction branches of `_prepare_path_format` from a single host OS. Catches the exact class of bug that broke WSL on 2026-04-11 while the Windows suite was 208/208 green.
@@ -67,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Out of scope (deferred)
 
 - safedel migration to the new filekit primitives (`atomic_write_json`, `copy_tree_preserving_links`, `metadata` module). filekit v0.2.4 is backwards-compatible, so safedel continues to work unmodified. A follow-up commit can rewire safedel's internal atomic-write helpers and its `_lib/preservelib/metadata.py` copy to point at filekit.
-- Renaming or removing any locked symbol in `API_STABILITY.md`.
+- Renaming or removing any locked symbol in `docs/api-stability.md`.
 - Upstream `C:\code\preserve\preservelib\` reconciliation with safedel's diverged rich copy.
 
 ## [0.2.3] - 2026-04-10

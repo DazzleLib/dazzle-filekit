@@ -11,8 +11,8 @@ requires
 2. A migration path (new-alongside-old, deprecation warning, or compat shim).
 3. A grep across `C:\code\` (and `C:\code\claude-projects\`) to find every
    caller, plus a commit updating each one in the same release window.
-4. An update to `API_STABILITY.md` removing the old symbol from the Locked
-   tables (or adding the replacement).
+4. An update to `docs/api-stability.md` removing the old symbol from the
+   Locked tables (or adding the replacement).
 5. An update to `tests/test_import_stability.py` reflecting the new surface.
 
 The session-logger incident on 2026-04-10 is the cautionary tale we keep
@@ -75,7 +75,7 @@ tightened, no behavior removed. Downstream tools need no changes.
 
 ### NOT changed (locked)
 
-- All top-level symbol names in `API_STABILITY.md`.
+- All top-level symbol names in `docs/api-stability.md`.
 - All positional parameters on existing functions.
 - All return types on existing functions (dicts may grow keys; callers
   reading specific keys are unaffected).

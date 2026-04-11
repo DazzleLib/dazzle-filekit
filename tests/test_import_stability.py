@@ -1,13 +1,13 @@
 """API stability canary.
 
-This test asserts that every symbol listed in API_STABILITY.md is
+This test asserts that every symbol listed in docs/api-stability.md is
 importable under its documented name. If a rename or removal sneaks into
 a future release, this test fails loudly.
 
 Do NOT relax these assertions to make the test pass. Fix the underlying
 change (add a compatibility shim, revert the rename, etc.) or, if the
 change is genuinely necessary, follow the migration procedure documented
-in API_STABILITY.md and update both the doc and this test in the same
+in docs/api-stability.md and update both the doc and this test in the same
 commit.
 """
 
@@ -58,9 +58,9 @@ def test_top_level_symbol_importable(symbol):
     """Every locked top-level symbol must be reachable via `dazzle_filekit`."""
     mod = importlib.import_module("dazzle_filekit")
     assert hasattr(mod, symbol), (
-        f"dazzle_filekit.{symbol} is in API_STABILITY.md as locked but "
+        f"dazzle_filekit.{symbol} is in docs/api-stability.md as locked but "
         f"is not exported from the top-level package. This breaks at "
-        f"least one external caller -- see API_STABILITY.md."
+        f"least one external caller -- see docs/api-stability.md."
     )
 
 
@@ -116,9 +116,9 @@ def test_submodule_symbol_importable(module_name, symbol):
     """Every locked submodule symbol must be reachable under its documented path."""
     mod = importlib.import_module(module_name)
     assert hasattr(mod, symbol), (
-        f"{module_name}.{symbol} is in API_STABILITY.md as locked but "
+        f"{module_name}.{symbol} is in docs/api-stability.md as locked but "
         f"is not exported. This breaks at least one external caller -- "
-        f"see API_STABILITY.md."
+        f"see docs/api-stability.md."
     )
 
 

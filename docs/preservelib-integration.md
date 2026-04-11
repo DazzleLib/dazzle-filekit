@@ -92,7 +92,7 @@ from dazzle_filekit.utils.compat import is_windows, is_wsl
 
 Rationale: top-level names for the "common" stuff, submodule imports
 for the "specific" stuff. Matches the convention in
-`API_STABILITY.md`.
+`docs/api-stability.md`.
 
 ---
 

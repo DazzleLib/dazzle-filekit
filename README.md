@@ -209,72 +209,21 @@ from dazzle_filekit import copy_tree_preserving_links
 copy_tree_preserving_links("src_tree", "dst_tree", dirs_exist_ok=True)
 ```
 
-## API Reference
+## API at a glance
 
-### Cross-Platform Utilities
+The Quick Start above covers the common 90% of what most users need.
+For the full function-by-function reference, see
+**[docs/api-reference.md](docs/api-reference.md)**.
 
-- `normalize_cross_platform_path(path, *, resolve=False)` - **Canonical** path normalizer (v0.2.4). Handles Git Bash `/c/`, WSL `/mnt/c/`, Windows `C:\` / `C:/`, tilde, env vars, `\\?\` prefix, and platform-direction conversion. With `resolve=True`, follows symlinks via `Path.resolve()`.
-- `resolve_cross_platform_path(path)` - Normalize and probe alternate platform formats if path not found (existence-aware)
-- `path_exists_cross_platform(path)` - Check path existence across formats
-- `is_windows()` / `is_unix()` / `is_wsl()` - Platform detection. `is_wsl()` returns True when running inside WSL (checks `WSL_DISTRO_NAME` env var + `/proc/version`).
-
-### Path Functions
-
-- `normalize_path(path)` / `normalize_path_no_resolve(path)` - Backwards-compat wrappers for `normalize_cross_platform_path(path, resolve=True)` and `resolve=False` respectively.
-- `is_same_file(path1, path2)` - Check if paths refer to same file
-- `split_drive_letter(path)` - Split drive letter from path (Windows)
-- `is_unc_path(path)` - Check if path is UNC format
-- `get_relative_path(path, base)` - Get relative path from base
-- `find_files(directory, patterns, exclude)` - Find files matching patterns
-- `get_path_type(path)` - Detect path type (unc, network, subst, local)
-
-### File Operations
-
-- `copy_file(src, dst, preserve_attrs=True, overwrite=False)` - Copy file with options
-- `move_file(src, dst, preserve_attrs=True, overwrite=False)` - Move file with options
-- `collect_file_metadata(path)` - Collect file metadata (rich: SDDL ACLs, xattrs, ctime as of v0.2.4)
-- `apply_file_metadata(path, metadata)` - Apply metadata to file (honors all rich fields when present)
-- `create_directory_structure(path, directory_paths)` - Create directory tree
-- `remove_file(path, force=False)` - Remove file safely
-- `remove_directory(path, recursive=True, force=False)` - Remove directory
-- `create_symlink(target, link, force=False)` - Create symbolic link with cross-platform support
-- `atomic_write_text(path, content, *, encoding='utf-8')` *(v0.2.4)* - Atomic tmp+rename text write
-- `atomic_write_json(path, data, *, indent=2, default=str)` *(v0.2.4)* - Atomic JSON write
-- `copy_tree_preserving_links(src, dst, *, dirs_exist_ok=False)` *(v0.2.4)* - `shutil.copytree(symlinks=True)` wrapper
-
-### Metadata Module (v0.2.4)
-
-Import via `from dazzle_filekit import metadata` or `from dazzle_filekit.metadata import ...`.
-
-- `metadata.collect_file_metadata(path)` - Rich capture (SDDL + ctime + xattrs + attr flags)
-- `metadata.apply_file_metadata(path, md)` - Rich apply
-- `metadata.restore_windows_creation_time(path, created)` - NTFS ctime restore via `SetFileTime`
-- `metadata.is_win32_available()` - Cached pywin32 probe
-- `metadata.compare_metadata(md1, md2)` - Diff two dicts with 2s timestamp tolerance
-- `metadata.metadata_to_json(md)` - JSON-safe projection
-- `metadata.get_metadata_summary(md)` - Human-readable summary
-- `metadata.collect_timestamp_info(path)` / `apply_timestamp_strategy(path, strategy, ...)` - Timestamp-only helpers
-
-### Platform-Specific (Windows, v0.2.4)
-
-- `platform.windows.detect_alternate_streams(path)` - Enumerate NTFS ADS via `FindFirstStreamW`
-- `platform.windows.has_significant_ads(path)` - True if any non-ignored stream exists
-
-### Disk Space Functions
-
-- `get_disk_usage(path)` - Get disk usage statistics (total, used, free)
-- `check_disk_space(dest, required, margin)` - Check if space is sufficient
-- `calculate_total_size(paths)` - Calculate total size of files/directories
-- `ensure_disk_space(dest, sources, margin)` - Verify space for copy operation
-
-### Verification Functions
-
-- `calculate_file_hash(path, algorithm)` - Calculate file hash
-- `verify_file_hash(path, expected_hash, algorithm)` - Verify hash
-- `calculate_directory_hashes(directory, algorithm)` - Hash all files in directory
-- `save_hashes_to_file(hashes, output_file)` / `load_hashes_from_file(hash_file)` - Hash persistence
-- `compare_directories(dir1, dir2)` - Compare directory contents
-- `verify_copied_files(src_dir, dst_dir)` - Verify copy operation
+| Area | Key entry points |
+|------|------------------|
+| **Paths** | `normalize_cross_platform_path(path, *, resolve=False)` (canonical), `resolve_cross_platform_path`, `path_exists_cross_platform`, `is_wsl()` |
+| **File ops** | `copy_file`, `move_file`, `create_symlink`, `copy_tree_preserving_links`, `atomic_write_text`, `atomic_write_json` |
+| **Metadata** | `dazzle_filekit.metadata` -- `collect_file_metadata`, `apply_file_metadata`, `restore_windows_creation_time`, `compare_metadata`, `is_win32_available` |
+| **Platform (Windows)** | `dazzle_filekit.platform.windows` -- `detect_alternate_streams`, `has_significant_ads`, `is_admin` |
+| **Disk space** | `get_disk_usage`, `check_disk_space`, `calculate_total_size`, `ensure_disk_space` |
+| **Verification** | `calculate_file_hash`, `verify_file_hash`, `verify_files_with_manifest`, `compare_directories` |
+| **UNC detection** | `is_unc_path`, `get_path_type` (compose with UNCtools for translation -- see [docs/unctools-integration.md](docs/unctools-integration.md)) |
 
 ## Platform Support
 
@@ -316,7 +265,11 @@ pip install -e ".[dev]"
 ### Run Tests
 
 ```bash
+# Standard run
 pytest tests/ -v --cov=dazzle_filekit
+
+# Cross-platform cross-check (Windows + WSL Ubuntu from one command)
+./scripts/run-cross-platform-tests.sh
 ```
 
 ### Code Formatting
@@ -325,6 +278,18 @@ pytest tests/ -v --cov=dazzle_filekit
 black dazzle_filekit tests
 flake8 dazzle_filekit tests
 ```
+
+## Documentation
+
+- **[docs/api-reference.md](docs/api-reference.md)** -- full function-by-function reference
+- **[docs/api-stability.md](docs/api-stability.md)** -- locked public API surface and known external callers. Changes to symbols listed here require a migration plan.
+- **[docs/platform-support.md](docs/platform-support.md)** -- platform matrix, test counts, and platform-specific feature breakdown
+- **[docs/preservelib-integration.md](docs/preservelib-integration.md)** -- how preservelib composes with filekit and the layering contract
+- **[docs/unctools-integration.md](docs/unctools-integration.md)** -- UNCtools composition patterns (filekit does UNC detection; unctools does UNC translation; user code composes them)
+- **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** -- forward-looking log of version-specific breaks and the Phase 4+ migration procedure
+- **[CHANGELOG.md](CHANGELOG.md)** -- version history
+
+`tests/test_import_stability.py` is the automated canary that enforces `docs/api-stability.md`. If you rename or remove a locked symbol, that test will fail.
 
 ## Contributing
 
