@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dazzle-filekit"
-version = "0.2.4"
+version = "0.3.0"
 description = "Cross-platform file operations toolkit with path handling, verification, and metadata preservation"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,6 +32,16 @@ classifiers = [
 keywords = ["file", "operations", "path", "verification", "hash", "metadata", "cross-platform"]
 dependencies = [
     "pathlib;python_version<\"3.4\"",
+    # The stack bedrock: shared Protocols (incl. PathVariantResolver),
+    # payload TypedDicts, and the DazzleError/FileOperationError roots.
+    "dazzle-lib>=0.2.0",
+    # unctools is the L0 path-identity layer; filekit's default
+    # PathVariantResolver is backed by it (UNC<->mapped-drive fallback for
+    # copy/move/open). A hard dep: filekit already requires pywin32 on
+    # Windows, and unctools' base is pure-Python (pywin32 is its own
+    # [windows] extra), so the cost is small and it removes optional-load
+    # awkwardness. See the 2026-06-14 resolver-edge DWP.
+    "unctools>=0.2.0",
     # pywin32 powers the rich Windows metadata features in
     # dazzle_filekit.metadata (SDDL ACL round-trip, ctime restoration,
     # junction detection via DeviceIoControl, NTFS ADS enumeration).
@@ -42,7 +52,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-unctools = ["unctools>=0.1.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=3.0.0",

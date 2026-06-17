@@ -45,14 +45,15 @@ dazzle-filekit was designed for applications requiring reliable file operations 
 pip install dazzle-filekit
 ```
 
+This pulls in the stack bedrock and path-identity layer automatically:
+`dazzle-lib` (shared Protocols/types) and `unctools` (UNC ↔ drive-letter
+identity). As of 0.3.0 both are **required** -- `unctools` backs the
+fallback-aware file operations (`copy_file(..., try_path_variants=True)`,
+`open_file`, etc.) via the `PathVariantResolver` seam.
+
 ### Optional Dependencies
 
 ```bash
-# UNCtools peer install (enables UNC ↔ drive-letter translation
-# via user-side composition; filekit does not import unctools directly).
-# See docs/unctools-integration.md for composition patterns.
-pip install 'dazzle-filekit[unctools]'
-
 # Development tools
 pip install 'dazzle-filekit[dev]'
 ```

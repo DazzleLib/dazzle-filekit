@@ -5,6 +5,28 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-17
+
+Restores the file-operation capabilities unctools shed in its 0.2.0
+"probe-not-mutate" split (STACK-MAP D7): content I/O has no home in the
+path-identity layer, so it lands here in L1 -- as the **Option D resolver
+edge**, where filekit's operations optionally consult a
+`dazzle_lib.PathVariantResolver` (default: unctools) to retry under a path's
+alternative names (UNC <-> mapped drive). Refs DazzleLib/dazzle-filekit#15.
+
+### Added
+- `open_file(path, ..., *, try_path_variants=False, resolver=None, **kwargs)` -- fallback-aware `open()` (forwards kwargs, returns the handle); reproduces unctools' removed `safe_open`.
+- `process_files(directory, callback, pattern='*', recursive=True, *, try_path_variants=False, resolver=None)` -- flat batch-apply over a glob set with directory-name fallback; reproduces `unctools.process_files`.
+- `dazzle_filekit.content` module -- `replace_in_file` / `batch_replace_in_files`: read-modify-write text replacement built on `open_file` + `atomic_write_text` (crash-safe) + `process_files`; reproduces unctools' removed `replace_in_file` family.
+- `path_exists_case_sensitive` / `get_case_sensitive_path` in `utils.compat` (beside `fix_path_case`) -- absorb unctools' removed case-sensitivity helpers.
+
+### Changed
+- `copy_file` / `move_file` / `copy_files_with_path` / `move_files_with_path` gain `try_path_variants=` / `resolver=` keyword-only args: when set, the operation retries across path-name variant combinations (reproduces unctools' `safe_copy` / `batch_copy` fallback). Default off -- existing behavior is unchanged.
+- **`dazzle-lib>=0.2.0` and `unctools>=0.2.0` are now hard dependencies** (previously `unctools` was an optional `[unctools]` extra). filekit already requires pywin32 on Windows and unctools' base is pure-Python, so the cost is small; this removes the optional-load awkwardness and makes the fallback always available.
+
+### Notes
+- `normalize_path`'s separator normalization is preserved: `convert_to_local` / `convert_to_unc` perform the same `/`->`\` step internally.
+
 ## [0.2.4] - 2026-04-11
 
 ### Added

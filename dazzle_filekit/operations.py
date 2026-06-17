@@ -18,6 +18,8 @@ import platform
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple, Any, Set, Callable
 
+from dazzle_lib import PathVariantResolver
+
 # Set up module-level logger
 logger = logging.getLogger(__name__)
 
@@ -163,7 +165,10 @@ def copy_file(
     source: Union[str, Path], 
     destination: Union[str, Path],
     preserve_attrs: bool = True,
-    overwrite: bool = False
+    overwrite: bool = False,
+    *,
+    try_path_variants: bool = False,
+    resolver: Optional[PathVariantResolver] = None,
 ) -> bool:
     """
     Copy a file with attribute preservation.
@@ -173,10 +178,23 @@ def copy_file(
         destination: Destination file path
         preserve_attrs: Whether to preserve file attributes
         overwrite: Whether to overwrite the destination if it exists
+        try_path_variants: If True, retry under alternative names for source/
+            destination (e.g. a UNC path and its mapped-drive equivalent) when
+            the first attempt fails (STACK-MAP D7 fallback). Off by default;
+            default behavior is unchanged.
+        resolver: A dazzle_lib.PathVariantResolver supplying name variants;
+            only consulted when try_path_variants=True (default: unctools).
 
     Returns:
         True if successful, False otherwise
     """
+    if try_path_variants:
+        from . import _fallback
+        return _fallback.retry_pair_bool(
+            lambda s, d: copy_file(s, d, preserve_attrs, overwrite),
+            str(source), str(destination),
+            feature="copy_file(try_path_variants=True)", resolver=resolver,
+        )
     source_path = Path(source)
     dest_path = Path(destination)
 
@@ -230,7 +248,10 @@ def move_file(
     source: Union[str, Path], 
     destination: Union[str, Path],
     preserve_attrs: bool = True,
-    overwrite: bool = False
+    overwrite: bool = False,
+    *,
+    try_path_variants: bool = False,
+    resolver: Optional[PathVariantResolver] = None,
 ) -> bool:
     """
     Move a file with attribute preservation.
@@ -240,10 +261,22 @@ def move_file(
         destination: Destination file path
         preserve_attrs: Whether to preserve file attributes
         overwrite: Whether to overwrite the destination if it exists
+        try_path_variants: If True, retry under alternative names for source/
+            destination when the first attempt fails (STACK-MAP D7 fallback).
+            Off by default; default behavior is unchanged.
+        resolver: A dazzle_lib.PathVariantResolver supplying name variants;
+            only consulted when try_path_variants=True (default: unctools).
 
     Returns:
         True if successful, False otherwise
     """
+    if try_path_variants:
+        from . import _fallback
+        return _fallback.retry_pair_bool(
+            lambda s, d: move_file(s, d, preserve_attrs, overwrite),
+            str(source), str(destination),
+            feature="move_file(try_path_variants=True)", resolver=resolver,
+        )
     source_path = Path(source)
     dest_path = Path(destination)
 
@@ -295,6 +328,38 @@ def move_file(
     except Exception as e:
         logger.error(f"Error moving {source_path} to {dest_path}: {e}")
         return False
+
+
+def open_file(
+    path: Union[str, Path],
+    mode: str = "r",
+    encoding: Optional[str] = None,
+    *,
+    try_path_variants: bool = False,
+    resolver: Optional[PathVariantResolver] = None,
+    **kwargs,
+):
+    """Open a file, optionally retrying under alternative path names.
+
+    A fallback-aware ``open()``: with ``try_path_variants=True``, a failed open
+    (e.g. a UNC name blocked by a Windows security zone, even though the file
+    exists) is retried under the path's other names from ``resolver`` (default:
+    the unctools-backed resolver), re-raising the original error if every
+    variant fails. This is the file-handle counterpart of
+    ``copy_file(try_path_variants=True)`` and reproduces the old
+    ``unctools.safe_open`` capability (STACK-MAP D7).
+
+    ``mode``, ``encoding`` and any extra ``**kwargs`` are forwarded to the
+    built-in ``open``; the return value is the file object. Off by default, so
+    ``open_file(path)`` behaves exactly like ``open(path)``.
+    """
+    if try_path_variants:
+        from . import _fallback
+        return _fallback.retry_single(
+            lambda p: open(p, mode=mode, encoding=encoding, **kwargs),
+            str(path), feature="open_file(try_path_variants=True)", resolver=resolver,
+        )
+    return open(path, mode=mode, encoding=encoding, **kwargs)
 
 
 def collect_file_metadata(path: Union[str, Path]) -> Dict[str, Any]:
@@ -415,7 +480,10 @@ def copy_files_with_path(
     path_style: str = 'relative',
     include_base: bool = False,
     preserve_attrs: bool = True,
-    overwrite: bool = False
+    overwrite: bool = False,
+    *,
+    try_path_variants: bool = False,
+    resolver: Optional[PathVariantResolver] = None,
 ) -> Dict[str, Tuple[bool, Path]]:
     """
     Copy multiple files preserving their path structure.
@@ -460,8 +528,9 @@ def copy_files_with_path(
                 include_base
             )
             
-            # Copy the file
-            success = copy_file(source_path, dest_path, preserve_attrs, overwrite)
+            # Copy the file (per-file variant fallback when requested)
+            success = copy_file(source_path, dest_path, preserve_attrs, overwrite,
+                                try_path_variants=try_path_variants, resolver=resolver)
             
             # Record the result
             results[str(source_path)] = (success, dest_path)
@@ -480,7 +549,10 @@ def move_files_with_path(
     path_style: str = 'relative',
     include_base: bool = False,
     preserve_attrs: bool = True,
-    overwrite: bool = False
+    overwrite: bool = False,
+    *,
+    try_path_variants: bool = False,
+    resolver: Optional[PathVariantResolver] = None,
 ) -> Dict[str, Tuple[bool, Path]]:
     """
     Move multiple files preserving their path structure.
@@ -525,8 +597,9 @@ def move_files_with_path(
                 include_base
             )
             
-            # Move the file
-            success = move_file(source_path, dest_path, preserve_attrs, overwrite)
+            # Move the file (per-file variant fallback when requested)
+            success = move_file(source_path, dest_path, preserve_attrs, overwrite,
+                                try_path_variants=try_path_variants, resolver=resolver)
             
             # Record the result
             results[str(source_path)] = (success, dest_path)
@@ -534,7 +607,69 @@ def move_files_with_path(
         except Exception as e:
             logger.error(f"Error moving {source_path}: {e}")
             results[str(source_path)] = (False, source_path)
-    
+
+    return results
+
+
+def process_files(
+    directory: Union[str, Path],
+    callback: Callable[[Path], Any],
+    pattern: str = "*",
+    recursive: bool = True,
+    *,
+    try_path_variants: bool = False,
+    resolver: Optional[PathVariantResolver] = None,
+) -> Dict[str, Any]:
+    """Apply ``callback`` to every file under ``directory`` matching ``pattern``.
+
+    The flat batch-apply primitive -- the L1 home of the old
+    ``unctools.process_files``: globs ``directory`` for ``pattern`` (recursive
+    by default), calls ``callback(Path)`` on each file, and returns
+    ``{str(path): result}``. Per-file exceptions are swallowed (logged, result
+    recorded as ``None``) so one bad file does not abort the batch.
+
+    This is NOT a tree traversal (no depth/filter model -- that is
+    dazzletreelib's domain); it is the generic sibling of
+    ``copy_files_with_path``.
+
+    Args:
+        directory: Directory to scan.
+        callback: Called with each matching file's ``Path``; its return value
+            is stored in the result map.
+        pattern: Glob pattern (default ``*``).
+        recursive: Recurse into subdirectories (default True).
+        try_path_variants: If True and ``directory`` does not exist under the
+            given name, retry under the variant names from ``resolver`` (the
+            directory-name fallback the original did).
+        resolver: A dazzle_lib.PathVariantResolver; only consulted when
+            ``try_path_variants=True`` (default: unctools).
+
+    Returns:
+        ``{str(file_path): callback_result_or_None}``.
+    """
+    dir_path = Path(directory)
+    results: Dict[str, Any] = {}
+
+    if try_path_variants and not dir_path.exists():
+        from . import _fallback
+        for cand in _fallback.variants_of(str(dir_path), resolver):
+            if Path(cand).exists():
+                dir_path = Path(cand)
+                break
+
+    if not dir_path.exists():
+        logger.error(f"Directory not found: {dir_path}")
+        return results
+
+    glob_pattern = f"**/{pattern}" if recursive else pattern
+    for file_path in dir_path.glob(glob_pattern):
+        if file_path.is_file():
+            try:
+                results[str(file_path)] = callback(file_path)
+            except Exception as e:
+                logger.error(f"Error processing file {file_path}: {e}")
+                results[str(file_path)] = None
+
     return results
 
 

@@ -32,6 +32,20 @@ Last audited: 2026-04-11 (filekit v0.2.4, consolidation complete).
 | `verify_file_hash`, `verify_copied_files` | README example |
 | `configure_logging`, `enable_verbose_logging` | README example |
 
+### v0.3.0 additions (locked as of v0.3.0)
+
+Restored from unctools' 0.2.0 split (STACK-MAP D7), as the Option D resolver edge.
+
+| Symbol | Description |
+|--------|-------------|
+| `open_file(path, mode='r', encoding=None, *, try_path_variants=False, resolver=None, **kwargs)` | Fallback-aware `open()` (R1 / unctools `safe_open`) |
+| `copy_file`/`move_file`/`copy_files_with_path`/`move_files_with_path` -- new `try_path_variants=`/`resolver=` keyword-only args | Path-variant fallback (R2 / `safe_copy`/`batch_copy`); additive, default off |
+| `process_files(directory, callback, pattern='*', recursive=True, *, try_path_variants=False, resolver=None)` | Flat batch-apply over a glob set (R3 / unctools `process_files`) |
+| `replace_in_file` / `batch_replace_in_files` (also `dazzle_filekit.content`) | Read-modify-write text replace (R4) |
+| `path_exists_case_sensitive` / `get_case_sensitive_path` / `fix_path_case` (`utils.compat`) | Case-sensitivity helpers (R6) |
+
+**Dependency change (0.3.0):** `dazzle-lib>=0.2.0` and `unctools>=0.2.0` are now required (the `PathVariantResolver` seam); the optional `[unctools]` extra is removed.
+
 ### v0.2.4 additions (locked as of v0.2.4)
 
 | Symbol | Description |

@@ -43,6 +43,9 @@ from .utils.compat import (
     normalize_cross_platform_path,
     resolve_cross_platform_path,
     path_exists_cross_platform,
+    fix_path_case,
+    path_exists_case_sensitive,
+    get_case_sensitive_path,
     is_windows,
     is_unix,
     is_wsl,
@@ -60,10 +63,12 @@ from .utils.disk import (
 from .operations import (
     copy_file,
     move_file,
+    open_file,
     collect_file_metadata,
     apply_file_metadata,
     copy_files_with_path,
     move_files_with_path,
+    process_files,
     create_directory_structure,
     remove_file,
     remove_directory,
@@ -97,7 +102,12 @@ from .metadata import (
     metadata_to_json,
 )
 
-__version__ = '0.2.4'
+# v0.3.0 content operations -- the L1 home of unctools' removed
+# replace_in_file / batch_replace_in_files (STACK-MAP D7).
+from . import content  # noqa: F401
+from .content import replace_in_file, batch_replace_in_files
+
+__version__ = '0.3.0'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -182,6 +192,9 @@ __all__ = [
     'normalize_cross_platform_path',
     'resolve_cross_platform_path',
     'path_exists_cross_platform',
+    'fix_path_case',
+    'path_exists_case_sensitive',
+    'get_case_sensitive_path',
     'is_windows',
     'is_unix',
     'is_wsl',
@@ -197,10 +210,12 @@ __all__ = [
     # Operation functions
     'copy_file',
     'move_file',
+    'open_file',
     'collect_file_metadata',
     'apply_file_metadata',
     'copy_files_with_path',
     'move_files_with_path',
+    'process_files',
     'create_directory_structure',
     'remove_file',
     'remove_directory',
@@ -217,7 +232,12 @@ __all__ = [
     'restore_windows_creation_time',
     'compare_metadata',
     'metadata_to_json',
-    
+
+    # Content operations (v0.3.0)
+    'content',
+    'replace_in_file',
+    'batch_replace_in_files',
+
     # Verification functions
     'calculate_file_hash',
     'verify_file_hash',

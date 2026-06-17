@@ -50,6 +50,15 @@ TOP_LEVEL_LOCKED = [
     "compare_metadata",
     "metadata_to_json",
     "metadata",  # the submodule
+    # v0.3.0 additions (Option D resolver edge -- restored unctools capabilities)
+    "open_file",
+    "process_files",
+    "replace_in_file",
+    "batch_replace_in_files",
+    "content",  # the submodule
+    "path_exists_case_sensitive",
+    "get_case_sensitive_path",
+    "fix_path_case",
 ]
 
 
@@ -86,6 +95,10 @@ SUBMODULE_LOCKED = {
         "normalize_cross_platform_path",
         "resolve_cross_platform_path",
         "path_exists_cross_platform",
+        # v0.3.0 (R6)
+        "fix_path_case",
+        "path_exists_case_sensitive",
+        "get_case_sensitive_path",
     ],
     # v0.2.4 additions
     "dazzle_filekit.metadata": [
@@ -100,6 +113,14 @@ SUBMODULE_LOCKED = {
         "atomic_write_text",
         "atomic_write_json",
         "copy_tree_preserving_links",
+        # v0.3.0 (R1/R3)
+        "open_file",
+        "process_files",
+    ],
+    # v0.3.0 content module (R4)
+    "dazzle_filekit.content": [
+        "replace_in_file",
+        "batch_replace_in_files",
     ],
 }
 

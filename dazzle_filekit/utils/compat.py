@@ -155,6 +155,46 @@ def fix_path_case(path: Union[str, Path]) -> str:
         # On Unix, just resolve the path
         return str(path_obj.resolve())
 
+def path_exists_case_sensitive(path: Union[str, Path]) -> bool:
+    """
+    Return True if ``path`` exists with the case it is stored under.
+
+    Absorbs unctools' removed internal helper (STACK-MAP D8). On Windows
+    (case-insensitive but case-preserving) this compares the requested path
+    against the filesystem's actual-case form; on case-sensitive Unix, mere
+    existence suffices.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path exists (and, on Windows, matches the stored case).
+    """
+    p = Path(path)
+    if not p.exists():
+        return False
+    if not is_windows():
+        return True
+    actual = fix_path_case(path)
+    return os.path.normpath(str(path)).lower() == os.path.normpath(str(actual)).lower()
+
+def get_case_sensitive_path(path: Union[str, Path]) -> str:
+    """
+    Return ``path`` with the filesystem's actual stored case on Windows, or
+    unchanged on Unix / for non-existent paths.
+
+    Absorbs unctools' removed ``get_case_sensitive_path`` (STACK-MAP D8); it is
+    the same operation as :func:`fix_path_case`, exposed under the original name
+    for migration parity.
+
+    Args:
+        path: The path to convert.
+
+    Returns:
+        The case-corrected path string.
+    """
+    return fix_path_case(path)
+
 def get_system_encoding() -> str:
     """
     Get the default encoding for the current system.
