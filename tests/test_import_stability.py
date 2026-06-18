@@ -59,6 +59,15 @@ TOP_LEVEL_LOCKED = [
     "path_exists_case_sensitive",
     "get_case_sensitive_path",
     "fix_path_case",
+    # v0.3.0 additions (#15 Phase A -- intrinsic link primitives)
+    "LinkInfo",
+    "analyze_link",
+    "detect_link_type",
+    "read_link_target",
+    "create_junction",
+    "create_hardlink",
+    "compute_relative_path",
+    "links",  # the submodule
 ]
 
 
@@ -83,6 +92,8 @@ SUBMODULE_LOCKED = {
         "normalize_path_no_resolve",
         # v0.2.4 canonical entry point
         "normalize_cross_platform_path",
+        # v0.3.0 (#15 Phase A -- V12, distinct from get_relative_path)
+        "compute_relative_path",
     ],
     "dazzle_filekit.utils.disk": [
         "get_disk_usage",
@@ -121,6 +132,19 @@ SUBMODULE_LOCKED = {
     "dazzle_filekit.content": [
         "replace_in_file",
         "batch_replace_in_files",
+    ],
+    # v0.3.0 link primitives (#15 Phase A)
+    "dazzle_filekit.links": [
+        "LinkInfo",
+        "analyze_link",
+        "detect_link_type",
+        "read_link_target",
+        "create_junction",
+        "create_hardlink",
+    ],
+    "dazzle_filekit.utils.validation": [
+        "is_junction",
+        "read_junction_target",
     ],
 }
 

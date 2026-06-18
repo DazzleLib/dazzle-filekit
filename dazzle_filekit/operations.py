@@ -15,6 +15,7 @@ import logging
 import datetime
 import time
 import platform
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple, Any, Set, Callable
 
@@ -794,10 +795,11 @@ def create_symlink(
     Create a symbolic link with cross-platform handling.
 
     On Unix systems, uses os.symlink directly.
-    On Windows, attempts multiple methods:
+    On Windows, attempts an escalating chain (see ``_create_windows_symlink``):
     1. os.symlink (requires Developer Mode or admin on Windows 10+)
-    2. dazzlelink library if available (handles elevation gracefully)
-    3. mklink command as fallback
+    2. win32file.CreateSymbolicLink with the unprivileged-create flag
+    3. mklink via a non-elevated cmd subprocess
+    4. PowerShell elevation (Start-Process -Verb RunAs)
 
     Args:
         target: The target path the symlink will point to
@@ -860,7 +862,21 @@ def create_symlink(
 
 def _create_windows_symlink(target: Path, link: Path, is_directory: bool) -> bool:
     """
-    Create a symbolic link on Windows using multiple fallback methods.
+    Create a symbolic link on Windows using an escalating chain of methods.
+
+    Each method is tried until one succeeds:
+      1. ``os.symlink`` -- works with Developer Mode enabled, no elevation.
+      2. ``win32file.CreateSymbolicLink`` with
+         ``SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`` (0x2) -- a clean Win32
+         API path with no subprocess (Windows 10 v1703+).
+      3. ``mklink`` via a non-elevated ``cmd`` subprocess.
+      4. PowerShell ``Start-Process -Verb RunAs`` (elevated ``mklink``), then a
+         brief poll because the elevated process runs asynchronously.
+
+    Methods 2 and 4 were absorbed from ``dazzlelink.operations.create_windows_symlink``
+    so filekit no longer imports dazzlelink for symlink creation (the L1->L2
+    upward edge is cut). filekit's bool contract is preserved: total failure
+    returns False (dazzlelink raised).
 
     Args:
         target: Target path
@@ -870,7 +886,10 @@ def _create_windows_symlink(target: Path, link: Path, is_directory: bool) -> boo
     Returns:
         True if successful, False otherwise
     """
-    # Method 1: Try os.symlink (works with Developer Mode enabled)
+    target_str = str(target)
+    link_str = str(link)
+
+    # Method 1: os.symlink (Developer Mode enabled)
     try:
         os.symlink(target, link, target_is_directory=is_directory)
         logger.debug(f"Created Windows symlink using os.symlink: {link} -> {target}")
@@ -882,44 +901,57 @@ def _create_windows_symlink(target: Path, link: Path, is_directory: bool) -> boo
         else:
             logger.warning(f"os.symlink failed: {e}")
 
-    # Method 2: Try dazzlelink if available
+    # Method 2: win32file.CreateSymbolicLink with the unprivileged-create flag
+    # (absorbed from dazzlelink). Clean API, no subprocess; Windows 10 v1703+.
     try:
-        from dazzlelink.operations import create_windows_symlink as dazzle_create_symlink
-        result = dazzle_create_symlink(str(target), str(link), is_directory)
-        if result:
-            logger.debug(f"Created Windows symlink using dazzlelink: {link} -> {target}")
+        import win32file
+        flags = win32file.SYMBOLIC_LINK_FLAG_DIRECTORY if is_directory else 0
+        flags |= 0x2  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+        if win32file.CreateSymbolicLink(link_str, target_str, flags):
+            logger.debug(f"Created Windows symlink using win32file API: {link} -> {target}")
             return True
+        logger.debug("win32file.CreateSymbolicLink returned falsy, trying mklink fallback")
     except ImportError:
-        logger.debug("dazzlelink not available, trying mklink fallback")
+        logger.debug("win32file not available, trying mklink fallback")
     except Exception as e:
-        logger.warning(f"dazzlelink symlink creation failed: {e}")
+        logger.warning(f"win32file symlink creation failed: {e}")
 
-    # Method 3: Try mklink command (may require elevation)
+    # Method 3: mklink via a non-elevated cmd subprocess.
+    dir_flag = '/D ' if is_directory else ''
+    mklink_cmd = f'mklink {dir_flag}"{link_str}" "{target_str}"'
     try:
-        import subprocess
-        dir_flag = '/D ' if is_directory else ''
-        cmd = f'mklink {dir_flag}"{link}" "{target}"'
-
         result = subprocess.run(
-            ['cmd', '/c', cmd],
-            text=True,
-            capture_output=True,
-            check=False
+            ['cmd', '/c', mklink_cmd],
+            text=True, capture_output=True, check=False,
         )
-
         if result.returncode == 0:
             logger.debug(f"Created Windows symlink using mklink: {link} -> {target}")
             return True
-        else:
-            logger.warning(f"mklink failed: {result.stderr.strip()}")
+        logger.warning(f"mklink failed: {result.stderr.strip()}")
     except Exception as e:
         logger.warning(f"mklink command failed: {e}")
+
+    # Method 4: PowerShell elevation (absorbed from dazzlelink). Prompts UAC and
+    # runs asynchronously, so poll briefly for the link to appear. (The inner
+    # mklink is single-quoted as the PowerShell ArgumentList, fixing the nested
+    # double-quote bug in the original dazzlelink implementation.)
+    try:
+        ps_cmd = f"Start-Process cmd.exe -Verb RunAs -ArgumentList '/c {mklink_cmd}'"
+        subprocess.run(['powershell', '-NoProfile', '-Command', ps_cmd], check=True)
+        for _ in range(5):
+            if os.path.exists(link_str):
+                logger.debug(f"Created Windows symlink using elevated mklink: {link} -> {target}")
+                return True
+            time.sleep(1)
+        logger.warning("Elevated mklink requested but the link could not be verified")
+    except Exception as e:
+        logger.warning(f"Elevated symlink creation failed: {e}")
 
     # All methods failed
     logger.error(
         f"Failed to create symlink on Windows. This typically requires either:\n"
         f"  1. Developer Mode enabled (Settings > Update & Security > For developers)\n"
         f"  2. Running as Administrator\n"
-        f"  3. Install dazzlelink: pip install dazzlelink"
+        f"  3. pywin32 installed (for the unprivileged-create API)"
     )
     return False

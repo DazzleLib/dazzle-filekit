@@ -30,6 +30,7 @@ from .paths import (
     split_drive_letter,
     is_unc_path,
     get_relative_path,
+    compute_relative_path,
     create_dest_path,
     find_files,
     find_regex_files,
@@ -107,6 +108,18 @@ from .metadata import (
 from . import content  # noqa: F401
 from .content import replace_in_file, batch_replace_in_files
 
+# v0.3.0 intrinsic link primitives (#15 Phase A) -- the L1 home of
+# preservelib's intrinsic link analysis + junction/hardlink creation.
+from . import links  # noqa: F401
+from .links import (
+    LinkInfo,
+    analyze_link,
+    detect_link_type,
+    read_link_target,
+    create_junction,
+    create_hardlink,
+)
+
 __version__ = '0.3.0'
 
 def configure_logging(level=logging.INFO, log_file=None):
@@ -180,6 +193,7 @@ __all__ = [
     'split_drive_letter',
     'is_unc_path',
     'get_relative_path',
+    'compute_relative_path',
     'create_dest_path',
     'find_files',
     'find_regex_files',
@@ -237,6 +251,15 @@ __all__ = [
     'content',
     'replace_in_file',
     'batch_replace_in_files',
+
+    # Intrinsic link primitives (v0.3.0, #15 Phase A)
+    'links',
+    'LinkInfo',
+    'analyze_link',
+    'detect_link_type',
+    'read_link_target',
+    'create_junction',
+    'create_hardlink',
 
     # Verification functions
     'calculate_file_hash',

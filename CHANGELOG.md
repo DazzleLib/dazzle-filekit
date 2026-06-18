@@ -20,9 +20,21 @@ alternative names (UNC <-> mapped drive). Refs DazzleLib/dazzle-filekit#15.
 - `dazzle_filekit.content` module -- `replace_in_file` / `batch_replace_in_files`: read-modify-write text replacement built on `open_file` + `atomic_write_text` (crash-safe) + `process_files`; reproduces unctools' removed `replace_in_file` family.
 - `path_exists_case_sensitive` / `get_case_sensitive_path` in `utils.compat` (beside `fix_path_case`) -- absorb unctools' removed case-sensitivity helpers.
 
+**Intrinsic link primitives (#15 Phase A)** -- the L1 home of preservelib's intrinsic link analysis and junction/hardlink creation (relational, destination-relative analysis stays at L3):
+- `dazzle_filekit.links` module -- `LinkInfo` (intrinsic-only: `kind` / `raw_target` / `resolved_target` / `is_broken` / `is_circular`; no destination parameter) and `analyze_link(link_path)`.
+- `detect_link_type` (`'symlink'` / `'junction'` / `'hardlink'` via `st_nlink > 1` / `None`) and `read_link_target` (symlinks via `os.readlink`; junctions via the reparse buffer -- no `cmd /c dir /al`).
+- `create_junction` (PowerShell `New-Item -ItemType Junction`, not `cmd /c mklink /j`) and `create_hardlink` (`os.link`, file-only, cross-device aware).
+- `utils.validation.read_junction_target` -- reads a junction's target from its `DeviceIoControl(FSCTL_GET_REPARSE_POINT)` reparse buffer.
+- `paths.compute_relative_path(target, start)` -- `os.path.relpath`-based `..`-traversing relative path with a Windows cross-drive fallback. Distinct from `get_relative_path` (subpath-containment only).
+- Ported from `preserve/preservelib/links.py` with three coverage/correctness improvements: DeviceIoControl junction detection (vs attribute-only), no banned `cmd` shell-outs, and hardlinks reported as valid (not `is_broken`).
+
 ### Changed
 - `copy_file` / `move_file` / `copy_files_with_path` / `move_files_with_path` gain `try_path_variants=` / `resolver=` keyword-only args: when set, the operation retries across path-name variant combinations (reproduces unctools' `safe_copy` / `batch_copy` fallback). Default off -- existing behavior is unchanged.
-- **`dazzle-lib>=0.2.0` and `unctools>=0.2.0` are now hard dependencies** (previously `unctools` was an optional `[unctools]` extra). filekit already requires pywin32 on Windows and unctools' base is pure-Python, so the cost is small; this removes the optional-load awkwardness and makes the fallback always available.
+- **`dazzle-lib>=0.2.0` and `unctools>=0.2.2` are now hard dependencies** (previously `unctools` was an optional `[unctools]` extra). filekit already requires pywin32 on Windows and unctools' base is pure-Python, so the cost is small; this removes the optional-load awkwardness and makes the fallback always available. (`unctools>=0.2.2` carries the drive-map enrichment that absorbed the removed `get_drive_mappings`.)
+- **`create_symlink` (Windows) absorbed dazzlelink's escalation chain (#15 Phase B)**: `_create_windows_symlink` now inlines the `win32file.CreateSymbolicLink` unprivileged-create API path and the PowerShell `Start-Process -Verb RunAs` elevation path, and **no longer imports `dazzlelink`** (the L1->L2 upward edge is cut). filekit's bool contract is preserved -- total failure returns `False` (dazzlelink raised).
+
+### Removed
+- **`utils.compat.get_drive_mappings()` (#15 Phase B / stack V9)**: drive↔UNC mapping is path-identity knowledge owned by the L0 layer. Its `win32wnet.WNetGetUniversalName` provider-chain scan was folded into `unctools`' `UNCConverter` (unctools 0.2.2) so no coverage is lost. Use `unctools.get_mappings()` / `unctools.get_reverse_mappings()`. (Zero callers in the ecosystem; not previously exported from the top-level package.)
 
 ### Notes
 - `normalize_path`'s separator normalization is preserved: `convert_to_local` / `convert_to_unc` perform the same `/`->`\` step internally.

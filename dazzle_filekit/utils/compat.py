@@ -368,29 +368,8 @@ def path_exists_cross_platform(path: Union[str, Path]) -> bool:
         return False
 
 
-def get_drive_mappings() -> Dict[str, str]:
-    """
-    Get mappings of network drives on Windows.
-    
-    Returns:
-        Dictionary mapping drive letters to UNC paths
-    """
-    if not is_windows():
-        return {}
-    
-    mappings = {}
-    
-    try:
-        import win32wnet
-        for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
-            try:
-                drive = f"{letter}:"
-                unc = win32wnet.WNetGetUniversalName(drive, 1)
-                mappings[drive] = unc
-            except:
-                # Not a mapped drive
-                pass
-    except ImportError:
-        logger.debug("Cannot get drive mappings - win32wnet module not available")
-    
-    return mappings
+# get_drive_mappings() was removed in 0.3.0 (DazzleLib stack V9). Drive<->UNC
+# mapping is path-identity knowledge owned by the L0 layer: this function's
+# WNetGetUniversalName provider-chain scan was folded into unctools' UNCConverter
+# (unctools 0.2.2, _get_mappings_with_wnetuniversalname). Use
+# `unctools.get_mappings()` / `unctools.get_reverse_mappings()` instead.

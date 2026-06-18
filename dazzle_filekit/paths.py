@@ -353,6 +353,44 @@ def get_relative_path(
         return None
 
 
+def compute_relative_path(
+    target: Union[str, Path],
+    start: Union[str, Path],
+    fallback_to_absolute: bool = True
+) -> Optional[str]:
+    """
+    Compute the relative path FROM ``start`` TO ``target`` via os.path.relpath.
+
+    This is the ``..``-traversing relative path between two arbitrary locations --
+    the operation needed to store a link's target relative to the link's own
+    directory. It is distinct from :func:`get_relative_path`, which uses
+    ``Path.relative_to`` and only succeeds when ``target`` is a *subpath* of
+    ``start`` (returning None for siblings). For example, with
+    target ``/a/b/c`` and start ``/a/x``:
+
+    * ``compute_relative_path`` -> ``"../b/c"``
+    * ``get_relative_path``     -> ``None`` (not a subpath)
+
+    Args:
+        target: The path being pointed at.
+        start: The reference location, typically the link's parent directory.
+        fallback_to_absolute: On a cross-drive ValueError (Windows), return the
+            absolute target instead of None.
+
+    Returns:
+        The relative path as a string, the absolute target on a cross-drive
+        fallback, or None.
+    """
+    target_abs = os.path.abspath(str(target))
+    start_abs = os.path.abspath(str(start))
+    try:
+        return os.path.relpath(target_abs, start_abs)
+    except ValueError:
+        # os.path.relpath raises ValueError across drives on Windows.
+        logger.debug(f"Cannot compute relative path (cross-drive): {target_abs} from {start_abs}")
+        return target_abs if fallback_to_absolute else None
+
+
 def create_dest_path(
     source_path: Union[str, Path],
     source_base: Union[str, Path],

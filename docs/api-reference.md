@@ -264,8 +264,10 @@ SHA256, SHA512 and other `hashlib`-compatible algorithms.
 - `get_app_data_dir(app_name)` — Application data directory
   (`%APPDATA%\<app>` on Windows, `~/.config/<app>` on Linux,
   `~/Library/Application Support/<app>` on macOS).
-- `get_drive_mappings()` — Windows drive-letter to UNC mappings (via
-  `win32wnet`).
+- `get_drive_mappings()` — **removed in 0.3.0** (DazzleLib stack V9). Drive↔UNC
+  mapping is path-identity knowledge owned by L0; its `win32wnet` provider-chain
+  scan was folded into `unctools` (≥0.2.2). Use `unctools.get_mappings()` /
+  `unctools.get_reverse_mappings()`.
 
 ### Low-level disk helpers (`utils.disk`)
 

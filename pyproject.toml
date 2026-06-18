@@ -40,8 +40,10 @@ dependencies = [
     # copy/move/open). A hard dep: filekit already requires pywin32 on
     # Windows, and unctools' base is pure-Python (pywin32 is its own
     # [windows] extra), so the cost is small and it removes optional-load
-    # awkwardness. See the 2026-06-14 resolver-edge DWP.
-    "unctools>=0.2.0",
+    # awkwardness. See the 2026-06-14 resolver-edge DWP. >=0.2.2 carries the
+    # WNetGetUniversalName drive-map enrichment that absorbed filekit's removed
+    # get_drive_mappings (stack V9).
+    "unctools>=0.2.2",
     # pywin32 powers the rich Windows metadata features in
     # dazzle_filekit.metadata (SDDL ACL round-trip, ctime restoration,
     # junction detection via DeviceIoControl, NTFS ADS enumeration).

@@ -353,3 +353,80 @@ def is_junction(path: Union[str, Path]) -> bool:
     except (OSError, AttributeError, ImportError) as e:
         logger.debug(f"is_junction({path}) failed: {e}")
         return False
+
+
+def read_junction_target(path: Union[str, Path]) -> Optional[str]:
+    """Return the target of a Windows junction, or None.
+
+    Reads the junction's reparse point with
+    ``DeviceIoControl(FSCTL_GET_REPARSE_POINT)`` and decodes the
+    ``MountPointReparseBuffer`` PrintName (falling back to SubstituteName
+    with its ``\\??\\`` prefix stripped). This is the clean, no-subprocess
+    replacement for parsing ``cmd /c dir /al`` output.
+
+    Returns None on non-Windows, for non-junctions, or on any error.
+    """
+    if not IS_WINDOWS:
+        return None
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+
+        OPEN_EXISTING = 3
+        FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+        FILE_SHARE_READ_WRITE_DELETE = 0x01 | 0x02 | 0x04
+
+        handle = kernel32.CreateFileW(
+            str(path), 0,
+            FILE_SHARE_READ_WRITE_DELETE,
+            None, OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        if handle == wintypes.HANDLE(-1).value:
+            return None
+
+        try:
+            IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+            FSCTL_GET_REPARSE_POINT = 0x000900A8
+            buf = ctypes.create_string_buffer(16384)
+            bytes_returned = wintypes.DWORD(0)
+
+            ok = kernel32.DeviceIoControl(
+                handle, FSCTL_GET_REPARSE_POINT,
+                None, 0, buf, 16384,
+                ctypes.byref(bytes_returned), None,
+            )
+            if not ok:
+                return None
+
+            raw = buf.raw
+            tag = int.from_bytes(raw[:4], byteorder="little")
+            if tag != IO_REPARSE_TAG_MOUNT_POINT:
+                return None
+
+            # MountPointReparseBuffer (after the 8-byte REPARSE_DATA_BUFFER
+            # header): SubstituteNameOffset/Length, PrintNameOffset/Length
+            # (each a little-endian WORD), then PathBuffer at offset 16.
+            subst_off = int.from_bytes(raw[8:10], byteorder="little")
+            subst_len = int.from_bytes(raw[10:12], byteorder="little")
+            print_off = int.from_bytes(raw[12:14], byteorder="little")
+            print_len = int.from_bytes(raw[14:16], byteorder="little")
+            path_buffer = raw[16:]
+
+            if print_len:
+                target = path_buffer[print_off:print_off + print_len].decode("utf-16-le")
+            else:
+                target = path_buffer[subst_off:subst_off + subst_len].decode("utf-16-le")
+                if target.startswith("\\??\\"):
+                    target = target[4:]
+            return target or None
+        finally:
+            kernel32.CloseHandle(handle)
+    except (OSError, AttributeError, ImportError) as e:
+        logger.debug(f"read_junction_target({path}) failed: {e}")
+        return None
