@@ -24,7 +24,8 @@ A Python toolkit for reliable file operations across Windows, Linux, and macOS. 
 - **File Verification** - Calculate and verify file hashes (MD5, SHA1, SHA256, SHA512)
 - **Disk Space Checking** - Pre-flight space verification before operations
 - **Platform Support** - Windows, Linux, and macOS with platform-specific optimizations
-- **UNC Path Detection** - Native `is_unc_path` / `get_path_type` helpers; optional [UNCtools](https://github.com/DazzleLib/UNCtools) peer for UNC ↔ drive-letter translation (see [docs/unctools-integration.md](docs/unctools-integration.md))
+- **UNC Path Detection** - Native `is_unc_path` / `classify_fs_object` helpers; built on [UNCtools](https://github.com/DazzleLib/UNCtools) (a hard dependency as of 0.3.0) for UNC ↔ drive-letter translation and the optional path-variant resolver edge (see [docs/unctools-integration.md](docs/unctools-integration.md))
+- **Link Primitives** - `analyze_link` / `create_junction` / `create_hardlink` / `read_link_target` (intrinsic link analysis; junctions via PowerShell, no `cmd`)
 
 ## Why dazzle-filekit?
 
@@ -89,10 +90,11 @@ if path_exists_cross_platform("/c/Users/foo/file.txt"):
 ### Path Operations
 
 ```python
-from dazzle_filekit import normalize_path, find_files, is_unc_path
+from dazzle_filekit import normalize_cross_platform_path, find_files, is_unc_path
 
-# Normalize paths (returns Path object)
-path = normalize_path("/some/path/../file.txt")
+# Normalize paths (returns Path object). resolve=True follows symlinks;
+# the default resolve=False is link-safe.
+path = normalize_cross_platform_path("/some/path/../file.txt")
 print(path)  # PosixPath('/some/file.txt') or WindowsPath('C:/some/file.txt')
 
 # Find files with patterns (returns list of path strings)
@@ -224,7 +226,8 @@ For the full function-by-function reference, see
 | **Platform (Windows)** | `dazzle_filekit.platform.windows` -- `detect_alternate_streams`, `has_significant_ads`, `is_admin` |
 | **Disk space** | `get_disk_usage`, `check_disk_space`, `calculate_total_size`, `ensure_disk_space` |
 | **Verification** | `calculate_file_hash`, `verify_file_hash`, `verify_files_with_manifest`, `compare_directories` |
-| **UNC detection** | `is_unc_path`, `get_path_type` (compose with UNCtools for translation -- see [docs/unctools-integration.md](docs/unctools-integration.md)) |
+| **UNC detection** | `is_unc_path`, `classify_fs_object` (UNCtools is the hard-dep L0 layer for translation + the resolver edge -- see [docs/unctools-integration.md](docs/unctools-integration.md)) |
+| **Link primitives** | `analyze_link`, `detect_link_type`, `read_link_target`, `create_junction`, `create_hardlink` |
 
 ## Platform Support
 

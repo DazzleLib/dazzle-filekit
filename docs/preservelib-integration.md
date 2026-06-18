@@ -36,7 +36,7 @@ from filekit's side so the two can evolve together.
 - **`dazzle_filekit`** is the *primitives* layer. Its functions operate on
   individual files/paths and return data. They never drive a workflow.
   Examples: `copy_file`, `collect_file_metadata`, `calculate_file_hash`,
-  `atomic_write_json`, `normalize_path`.
+  `atomic_write_json`, `normalize_cross_platform_path`, `analyze_link`.
 
 - **`preservelib`** is the *workflow* layer. Its functions orchestrate
   the "save manifest + copy tree + verify hash + restore metadata"
@@ -84,8 +84,8 @@ from dazzle_filekit.metadata import (
     restore_windows_creation_time,
 )
 from dazzle_filekit.paths import (
-    normalize_path,
-    normalize_path_no_resolve,
+    normalize_cross_platform_path,  # resolve=True (link-following) / default (link-safe)
+    classify_fs_object,
 )
 from dazzle_filekit.utils.compat import is_windows, is_wsl
 ```
@@ -156,14 +156,15 @@ In your downstream tool's `pyproject.toml` or `requirements.txt`:
 
 ```toml
 dependencies = [
-    "dazzle-filekit>=0.2.4,<0.3",  # for the metadata module
+    "dazzle-filekit>=0.3.0,<0.4",  # metadata module + link primitives
     "preservelib>=0.X.Y",            # for workflow orchestration
 ]
 ```
 
-The `<0.3` upper bound is conservative: any future 0.3.x release will
-be allowed to remove deprecated symbols (with the usual migration
-procedure), so pin accordingly.
+Pin to `>=0.3.0,<0.4`: 0.3.0 was a clean break (it removed
+`normalize_path` / `normalize_path_no_resolve` / `get_path_type` and folded
+`get_drive_mappings` into unctools). A future 0.4.0 may break again, so cap the
+upper bound at the next minor.
 
 ---
 

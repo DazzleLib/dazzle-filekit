@@ -126,27 +126,26 @@ preserves the literal link path.
 | `\\?\C:\foo` | `C:\foo` (prefix stripped) | -- |
 | `C:\a\b\..\c\file.txt` | `C:\a\c\file.txt` (normpath collapses) | `/c/a/c/file.txt` |
 
-The three public entry points are all backed by the same canonical
-implementation:
-
-- `normalize_cross_platform_path(path, *, resolve=False)` -- preferred
-- `normalize_path(path)` -- wrapper for `resolve=True`
-- `normalize_path_no_resolve(path)` -- wrapper for `resolve=False`
+`normalize_cross_platform_path(path, *, resolve=False)` is the single public
+entry point: `resolve=True` follows symlinks, the default `resolve=False` is
+link-safe. (The `normalize_path` / `normalize_path_no_resolve` wrappers were
+removed in 0.3.0 -- clean break.)
 
 ## Installation Variants
 
 ```bash
-# Standard installation (all platforms, pulls in pywin32 on Windows)
+# Standard installation. Pulls in the stack bedrock dazzle-lib>=0.2.0 and the
+# L0 path-identity layer unctools>=0.2.2 (both required as of 0.3.0), plus
+# pywin32 on Windows.
 pip install dazzle-filekit
-
-# With UNCtools peer for UNC ↔ drive-letter translation
-# (see docs/unctools-integration.md for composition patterns;
-# filekit does not import unctools directly)
-pip install 'dazzle-filekit[unctools]'
 
 # Development tools
 pip install 'dazzle-filekit[dev]'
 ```
+
+> As of 0.3.0, UNCtools is a **hard dependency** (the `PathVariantResolver`
+> resolver edge), not an optional `[unctools]` extra. See
+> [docs/unctools-integration.md](unctools-integration.md).
 
 ## Testing on Your Platform
 

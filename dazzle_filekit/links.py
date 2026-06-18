@@ -35,6 +35,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
+from dazzle_lib import LinkTargetDict  # cross-layer "what is this link" shape (D10)
+
 from .utils.validation import is_junction, read_junction_target
 
 logger = logging.getLogger(__name__)
@@ -73,10 +75,14 @@ class LinkInfo:
     is_circular: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to a plain dict for JSON serialization / reporting."""
+    def to_dict(self) -> LinkTargetDict:
+        """Serialize to the cross-layer LinkTargetDict (STACK-MAP D10).
+
+        ``link_path`` is intentionally NOT in the dict: LinkTargetDict describes
+        the link's TARGET, and a caller already knows which link it analyzed.
+        Read ``self.link_path`` on the object when you need the link's own path.
+        """
         return {
-            "link_path": str(self.link_path),
             "kind": self.kind,
             "raw_target": self.raw_target,
             "resolved_target": str(self.resolved_target) if self.resolved_target else None,

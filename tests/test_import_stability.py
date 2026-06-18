@@ -29,10 +29,10 @@ TOP_LEVEL_LOCKED = [
     "calculate_file_hash",
     "collect_file_metadata",
     # Referenced by README examples / docs
-    "normalize_path",
     "is_same_file",
     "find_files",
     "is_unc_path",
+    "classify_fs_object",  # v0.3.0 #15 Phase C (was get_path_type)
     "get_disk_usage",
     "check_disk_space",
     "ensure_disk_space",
@@ -88,12 +88,13 @@ def test_top_level_symbol_importable(symbol):
 
 SUBMODULE_LOCKED = {
     "dazzle_filekit.paths": [
-        "normalize_path",
-        "normalize_path_no_resolve",
-        # v0.2.4 canonical entry point
+        # v0.2.4 canonical entry point (normalize_path / normalize_path_no_resolve
+        # removed in 0.3.0 #15 Phase C -- use resolve=True / resolve=False)
         "normalize_cross_platform_path",
         # v0.3.0 (#15 Phase A -- V12, distinct from get_relative_path)
         "compute_relative_path",
+        # v0.3.0 (#15 Phase C -- renamed from get_path_type)
+        "classify_fs_object",
     ],
     "dazzle_filekit.utils.disk": [
         "get_disk_usage",
@@ -200,9 +201,11 @@ def test_session_logger_import_pattern():
     from dazzle_filekit import copy_file, normalize_cross_platform_path  # noqa: F401,F811
 
 
-def test_safedel_classifier_import_pattern():
-    """Exact import statement used by dazzlecmd safedel/_classifier.py:90."""
-    from dazzle_filekit.paths import normalize_path_no_resolve  # noqa: F401
+def test_safedel_classifier_canonical_import():
+    """dazzlecmd safedel/_classifier.py:90 migrates to the canonical name in
+    0.3.0 (normalize_path_no_resolve removed -> normalize_cross_platform_path,
+    whose default resolve=False is the same link-safe normalization)."""
+    from dazzle_filekit.paths import normalize_cross_platform_path  # noqa: F401
 
 
 def test_fixpath_import_pattern():
@@ -210,9 +213,11 @@ def test_fixpath_import_pattern():
     from dazzle_filekit import resolve_cross_platform_path  # noqa: F401
 
 
-def test_links_import_pattern():
-    """Exact import statement used by dazzlecmd links/links.py:70."""
-    from dazzle_filekit.paths import normalize_path as fk_normalize  # noqa: F401
+def test_links_canonical_import():
+    """dazzlecmd links/links.py:70 migrates to the canonical name in 0.3.0
+    (normalize_path removed -> normalize_cross_platform_path(path, resolve=True)
+    is the same link-following normalization)."""
+    from dazzle_filekit.paths import normalize_cross_platform_path  # noqa: F401
 
 
 def test_ghtraf_import_pattern():

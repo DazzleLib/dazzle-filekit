@@ -33,8 +33,19 @@ from pathlib import Path
 
 import pytest
 
-from dazzle_filekit.paths import normalize_path, normalize_path_no_resolve
 from dazzle_filekit.utils.compat import normalize_cross_platform_path
+
+
+# normalize_path / normalize_path_no_resolve were removed in 0.3.0 (#15
+# Phase C, clean break). Defined here as test-local helpers -- they were
+# exactly these wrappers -- so this characterization suite still pins the
+# same behavior through the canonical normalize_cross_platform_path.
+def normalize_path(path):
+    return normalize_cross_platform_path(path, resolve=True)
+
+
+def normalize_path_no_resolve(path):
+    return normalize_cross_platform_path(path, resolve=False)
 
 
 # ---------------------------------------------------------------------------

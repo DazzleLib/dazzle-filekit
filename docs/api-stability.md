@@ -8,7 +8,24 @@ must include a migration commit in the downstream caller(s) listed below.
 `tests/test_import_stability.py` is the automated canary for this document.
 If you rename or remove a locked symbol, that test will fail.
 
-Last audited: 2026-04-11 (filekit v0.2.4, consolidation complete).
+Last audited: 2026-06-17 (filekit v0.3.0, #15 complete -- link primitives, D4 renames, V9 fold).
+
+> **v0.3.0 (#15) is a deliberate clean break.** Unlike the deprecation-shim
+> migration procedure at the bottom of this doc, 0.3.0 removed/renamed locked
+> symbols **without shims** and migrated every in-tree consumer in the same
+> cycle. The rubric was coverage-completeness over backward-compatibility. 0.3.0
+> had not shipped to PyPI when these landed, so no released contract broke
+> mid-stream.
+
+### v0.3.0 breaking changes (#15)
+
+| Old symbol | Replacement | Migrated consumer(s) |
+|------------|-------------|----------------------|
+| `paths.normalize_path(p)` | `normalize_cross_platform_path(p, resolve=True)` (link-following) | dazzlecmd `dazzlecmd_lib/core/links/_detect.py` |
+| `paths.normalize_path_no_resolve(p)` | `normalize_cross_platform_path(p)` (default `resolve=False`, link-safe) | dazzlecmd `dazzlecmd_lib/core/safedel/_classifier.py` |
+| `paths.get_path_type(p)` | `paths.classify_fs_object(p)` (identical behavior) | (no external caller) |
+| `paths.is_unc_path` / `utils.validation.is_unc_path` (divergent copies) | one canonical def delegating to `unctools.is_unc_path` -- `//server/share` is now True on every platform | (behavior superset; no caller broke) |
+| `utils.compat.get_drive_mappings()` | `unctools.get_mappings()` / `get_reverse_mappings()` (V9 fold into unctools 0.2.2) | (no caller; never exported) |
 
 ---
 
@@ -18,16 +35,17 @@ Last audited: 2026-04-11 (filekit v0.2.4, consolidation complete).
 
 | Symbol | Callers |
 |--------|---------|
-| `normalize_cross_platform_path` | claude-session-logger `log-command.py`, `rename_session.py` (× all 4 copies). **v0.2.4 note**: this is now the canonical path normalizer with an optional `resolve=` keyword arg; `normalize_path` and `normalize_path_no_resolve` are wrappers. |
+| `normalize_cross_platform_path` | claude-session-logger `log-command.py`, `rename_session.py` (× all 4 copies). The canonical path normalizer with an optional `resolve=` keyword arg. **0.3.0**: the `normalize_path` / `normalize_path_no_resolve` wrappers were removed (clean break) -- use `resolve=True` / the default. |
 | `create_symlink` | claude-session-logger `log-command.py` (× all 4 copies) |
 | `copy_file` | claude-session-logger `rename_session.py` (× all 4 copies) |
 | `resolve_cross_platform_path` | dazzlecmd `projects/core/fixpath/fixpath.py:197` |
 | `calculate_file_hash` | github-traffic-tracker `plan_lib/file_ops.py:26` |
 | `collect_file_metadata` | github-traffic-tracker `plan_lib/file_ops.py:26`. **v0.2.4 note**: returned dict is now a strict superset (adds `size`, ISO timestamps, SDDL ACLs, xattrs). |
-| `apply_file_metadata` | preservelib workflows. **v0.2.4 note**: honors the new fields when present. |
-| `normalize_path` | dazzlecmd `projects/core/links/links.py:70` (aliased as `fk_normalize`); README / philosophy docs. |
+| `apply_file_metadata` | preservelib workflows. **v0.2.4 note**: honors the new fields when present. **v0.3.0**: `metadata=` param typed as `dazzle_lib.FileMetadataDict`. |
+| ~~`normalize_path`~~ | **Removed in 0.3.0 (clean break)** -> `normalize_cross_platform_path(path, resolve=True)`. dazzlecmd migrated in-cycle. |
 | `is_same_file` | README example |
-| `find_files`, `is_unc_path` | README example |
+| `find_files`, `is_unc_path` | README example. **v0.3.0**: `is_unc_path` is now platform-independent (`//server/share` -> True everywhere). |
+| `classify_fs_object` | **v0.3.0** (renamed from `get_path_type`): classifies WHAT a filesystem object is. |
 | `get_disk_usage`, `check_disk_space`, `ensure_disk_space` | README example |
 | `verify_file_hash`, `verify_copied_files` | README example |
 | `configure_logging`, `enable_verbose_logging` | README example |
@@ -44,7 +62,19 @@ Restored from unctools' 0.2.0 split (STACK-MAP D7), as the Option D resolver edg
 | `replace_in_file` / `batch_replace_in_files` (also `dazzle_filekit.content`) | Read-modify-write text replace (R4) |
 | `path_exists_case_sensitive` / `get_case_sensitive_path` / `fix_path_case` (`utils.compat`) | Case-sensitivity helpers (R6) |
 
-**Dependency change (0.3.0):** `dazzle-lib>=0.2.0` and `unctools>=0.2.0` are now required (the `PathVariantResolver` seam); the optional `[unctools]` extra is removed.
+**Intrinsic link primitives (#15 Phase A):**
+
+| Symbol | Description |
+|--------|-------------|
+| `dazzle_filekit.links` (submodule) + `LinkInfo` / `analyze_link(link_path)` | Intrinsic link analysis (no destination param); `LinkInfo.to_dict()` -> `dazzle_lib.LinkTargetDict` |
+| `detect_link_type` / `read_link_target` | Link kind (`symlink`/`junction`/`hardlink`/`None`) + target read (DeviceIoControl for junctions) |
+| `create_junction` / `create_hardlink` | PowerShell junction + `os.link` hardlink |
+| `paths.compute_relative_path(target, start)` | `..`-traversing relative path (distinct from `get_relative_path`) |
+| `utils.validation.read_junction_target` | Junction target via the reparse buffer |
+
+**Cross-layer schemas consumed (#15 Phase D):** `collect_file_metadata` -> `dazzle_lib.FileMetadataDict`, `collect_timestamp_info` -> `TimestampsDict`, `LinkInfo.to_dict` -> `LinkTargetDict` (STACK-MAP D10).
+
+**Dependency change (0.3.0):** `dazzle-lib>=0.2.0` and `unctools>=0.2.2` are now required (the `PathVariantResolver` seam + the V9 drive-map fold); the optional `[unctools]` extra is removed.
 
 ### v0.2.4 additions (locked as of v0.2.4)
 
@@ -72,9 +102,11 @@ existing keyword names must not be removed or repurposed.
 
 | Symbol | Callers |
 |--------|---------|
-| `normalize_cross_platform_path` | **v0.2.4 canonical entry point**; re-exported via `utils.compat` for backwards compatibility |
-| `normalize_path_no_resolve` | dazzlecmd `projects/core/safedel/_classifier.py:90`. v0.2.4 wrapper for `normalize_cross_platform_path(path, resolve=False)`. |
-| `normalize_path` | dazzlecmd `projects/core/links/links.py:70` (aliased as `fk_normalize`). v0.2.4 wrapper for `normalize_cross_platform_path(path, resolve=True)`. |
+| `normalize_cross_platform_path` | **canonical entry point** (`resolve=True` -> link-following; default -> link-safe); re-exported via `utils.compat`. dazzlecmd migrated to this in 0.3.0. |
+| `classify_fs_object` | v0.3.0, renamed from `get_path_type` |
+| `compute_relative_path` | v0.3.0 (#15 Phase A); distinct from `get_relative_path` (subpath-only) |
+
+> `normalize_path` / `normalize_path_no_resolve` were **removed in 0.3.0** (clean break, no shims) -- see the v0.3.0 breaking-changes table near the top.
 
 ### `dazzle_filekit.utils.disk`
 

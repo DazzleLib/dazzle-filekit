@@ -18,9 +18,10 @@ class TestImports:
 
     def test_import_paths(self):
         """Test paths module functions are available."""
-        assert hasattr(dazzle_filekit, 'normalize_path')
+        assert hasattr(dazzle_filekit, 'normalize_cross_platform_path')
         assert hasattr(dazzle_filekit, 'find_files')
         assert hasattr(dazzle_filekit, 'is_unc_path')
+        assert hasattr(dazzle_filekit, 'classify_fs_object')
 
     def test_import_operations(self):
         """Test operations module functions are available."""
@@ -39,8 +40,8 @@ class TestBasicOperations:
     """Test basic operations work."""
 
     def test_normalize_path_returns_path_object(self):
-        """Test normalize_path returns Path object."""
-        result = dazzle_filekit.normalize_path("/some/path")
+        """Test normalize_cross_platform_path returns Path object."""
+        result = dazzle_filekit.normalize_cross_platform_path("/some/path")
         assert isinstance(result, Path)
 
     def test_copy_file_basic(self):

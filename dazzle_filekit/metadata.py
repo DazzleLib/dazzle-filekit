@@ -39,10 +39,15 @@ import platform
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
+# Cross-layer payload schemas owned by the stack bedrock (STACK-MAP D10).
+# filekit produces these shapes; consuming the TypedDicts as our signatures
+# makes the contract explicit and machine-checkable (#15 Phase D).
+from dazzle_lib import FileMetadataDict, TimestampsDict
+
 # Set up module-level logger
 logger = logging.getLogger(__name__)
 
-def collect_file_metadata(path: Union[str, Path]) -> Dict[str, Any]:
+def collect_file_metadata(path: Union[str, Path]) -> FileMetadataDict:
     """
     Collect file metadata for preservation.
 
@@ -189,7 +194,7 @@ def _collect_windows_metadata(path: Path) -> Dict[str, Any]:
         logger.error(f"Error collecting Windows metadata for {path}: {e}")
         return windows_metadata
 
-def apply_file_metadata(path: Union[str, Path], metadata: Dict[str, Any]) -> bool:
+def apply_file_metadata(path: Union[str, Path], metadata: FileMetadataDict) -> bool:
     """
     Apply metadata to a file.
 
@@ -643,7 +648,7 @@ def metadata_to_json(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
     return result
 
-def collect_timestamp_info(path: Union[str, Path]) -> Dict[str, Any]:
+def collect_timestamp_info(path: Union[str, Path]) -> TimestampsDict:
     """
     Collect timestamp information from a file.
 

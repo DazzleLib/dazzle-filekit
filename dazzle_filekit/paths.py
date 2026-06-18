@@ -54,8 +54,8 @@ def _prepare_path_format(path_str: str) -> str:
     same input is converted to ``C:\Users\foo``.
 
     This is the single source of truth for "what counts as a portable
-    path format" in filekit. Both ``normalize_path`` (link-following)
-    and ``normalize_path_no_resolve`` (link-safe) layer on top of it.
+    path format" in filekit. ``normalize_cross_platform_path`` layers on
+    top of it (``resolve=True`` -> link-following; default link-safe).
     """
     path_str = path_str.strip()
 
@@ -124,9 +124,9 @@ def normalize_cross_platform_path(
 ) -> Path:
     r"""Canonical path normalizer. Handles portable path formats across platforms.
 
-    **This is the preferred path-normalization entry point in filekit.**
-    ``normalize_path()`` and ``normalize_path_no_resolve()`` are thin
-    backwards-compatibility wrappers around this function.
+    **This is the path-normalization entry point in filekit.** Pass
+    ``resolve=True`` for link-following normalization, or use the default
+    ``resolve=False`` for link-safe (literal) normalization.
 
     Applies all portable-format conversions via ``_prepare_path_format``:
 
@@ -195,40 +195,11 @@ def normalize_cross_platform_path(
     return Path(path_str)
 
 
-def normalize_path(path: Union[str, Path]) -> Path:
-    """Normalize a path, FOLLOWING symlinks.
-
-    Thin wrapper for ``normalize_cross_platform_path(path, resolve=True)``.
-    Kept for API stability -- referenced by README examples and used by
-    ``dazzlecmd/projects/core/links/links.py``. The preferred entry point
-    for new code is ``normalize_cross_platform_path(path, resolve=True)``.
-
-    Args:
-        path: The path to normalize
-
-    Returns:
-        The normalized, symlink-followed path as a Path object.
-    """
-    return normalize_cross_platform_path(path, resolve=True)
-
-
-def normalize_path_no_resolve(path: Union[str, Path]) -> Path:
-    """Normalize a path WITHOUT resolving symlinks or junctions.
-
-    Thin wrapper for ``normalize_cross_platform_path(path, resolve=False)``.
-    Kept for API stability -- used by
-    ``dazzlecmd/projects/core/safedel/_classifier.py``. The preferred
-    entry point for new code is ``normalize_cross_platform_path(path)``
-    (the default ``resolve=False`` already does link-safe normalization).
-
-    Args:
-        path: The path to normalize
-
-    Returns:
-        The normalized path as a Path object, with the literal link
-        path preserved (not its target).
-    """
-    return normalize_cross_platform_path(path, resolve=False)
+# normalize_path() / normalize_path_no_resolve() were removed in 0.3.0
+# (#15 Phase C, clean break -- no shims). They were thin wrappers over
+# normalize_cross_platform_path(): use
+#   normalize_cross_platform_path(path, resolve=True)   # was normalize_path
+#   normalize_cross_platform_path(path)                 # was normalize_path_no_resolve
 
 
 def is_same_file(path1: Union[str, Path], path2: Union[str, Path]) -> bool:
@@ -247,8 +218,8 @@ def is_same_file(path1: Union[str, Path], path2: Union[str, Path]) -> bool:
     """
     try:
         # Normalize paths
-        norm_path1 = normalize_path(path1)
-        norm_path2 = normalize_path(path2)
+        norm_path1 = normalize_cross_platform_path(path1, resolve=True)
+        norm_path2 = normalize_cross_platform_path(path2, resolve=True)
         
         # Check if normalized paths are the same
         if norm_path1 == norm_path2:
@@ -290,25 +261,17 @@ def split_drive_letter(path: Union[str, Path]) -> Tuple[str, str]:
 
 
 def is_unc_path(path: Union[str, Path]) -> bool:
+    r"""Check if a path is a UNC (``\\server\share``) path.
+
+    Canonical, platform-independent: delegates to the L0 path-identity
+    owner ``unctools.is_unc_path``, which normalizes ``/`` -> ``\`` and
+    then checks the ``\\`` prefix -- so ``//server/share`` is recognized on
+    every platform. This is a strict superset of (and replaces, in 0.3.0)
+    the previously divergent win32-only check here and the POSIX-``//``
+    check in ``utils.validation``.
     """
-    Check if a path is a UNC (Universal Naming Convention) path.
-    
-    UNC paths start with \\\\ on Windows, representing network resources.
-    
-    Args:
-        path: The path to check
-        
-    Returns:
-        True if the path is a UNC path, False otherwise
-    """
-    path_str = str(path)
-    
-    # UNC paths start with \\ on Windows
-    if sys.platform == 'win32':
-        return path_str.startswith('\\\\')
-    
-    # UNC paths don't exist on non-Windows systems
-    return False
+    from unctools import is_unc_path as _unc_is_unc_path
+    return _unc_is_unc_path(path)
 
 
 def get_relative_path(
@@ -331,8 +294,8 @@ def get_relative_path(
     base_path_obj = Path(base_path)
     
     # Normalize paths
-    path_norm = normalize_path(path_obj)
-    base_norm = normalize_path(base_path_obj)
+    path_norm = normalize_cross_platform_path(path_obj, resolve=True)
+    base_norm = normalize_cross_platform_path(base_path_obj, resolve=True)
     
     # Check for cross-drive paths on Windows
     if sys.platform == 'win32':
@@ -411,9 +374,9 @@ def create_dest_path(
     Returns:
         Destination path as a Path object
     """
-    source_path = normalize_path(source_path)
-    source_base = normalize_path(source_base)
-    dest_base = normalize_path(dest_base)
+    source_path = normalize_cross_platform_path(source_path, resolve=True)
+    source_base = normalize_cross_platform_path(source_base, resolve=True)
+    dest_base = normalize_cross_platform_path(dest_base, resolve=True)
     
     # Style-specific path construction
     if path_style == 'flat':
@@ -696,16 +659,22 @@ def ensure_unique_path(path: Union[str, Path]) -> Path:
         counter += 1
 
 
-def get_path_type(path: Union[str, Path]) -> str:
+def classify_fs_object(path: Union[str, Path]) -> str:
     """
-    Get the type of a path.
-    
+    Classify WHAT kind of filesystem object a path is.
+
+    (Renamed from ``get_path_type`` in 0.3.0 -- #15 Phase C. The L1 name
+    classifies the OBJECT; unctools' sibling ``classify_path_origin``
+    classifies WHERE a path's name comes from. Behavior is unchanged: a
+    junction still reports ``'directory'`` -- use ``links.analyze_link``
+    for link-kind classification.)
+
     Args:
         path: Path to check
-            
+
     Returns:
-        Path type: 'file', 'directory', 'symlink', 'socket', 'pipe', 'block_device', 
-        'char_device', or 'unknown'
+        Path type: 'file', 'directory', 'symlink', 'socket', 'pipe',
+        'block_device', 'char_device', 'nonexistent', or 'unknown'
     """
     path_obj = Path(path)
     

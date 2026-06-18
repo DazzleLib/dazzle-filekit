@@ -46,17 +46,21 @@ same canonical implementation.
 
 The following path helpers live in `dazzle_filekit.paths`:
 
-- `normalize_path(path)` / `normalize_path_no_resolve(path)` —
-  Backwards-compatibility wrappers for
-  `normalize_cross_platform_path(path, resolve=True)` and
-  `resolve=False` respectively. Kept for API stability per
-  [api-stability.md](api-stability.md); preferred entry point for
-  new code is `normalize_cross_platform_path`.
+- `normalize_cross_platform_path(path, *, resolve=False)` — the canonical
+  normalizer. `resolve=True` follows symlinks (`Path.resolve()`); the default
+  `resolve=False` is link-safe (lexical). (The `normalize_path` /
+  `normalize_path_no_resolve` wrappers were **removed in 0.3.0** — clean break;
+  use `resolve=True` / the default respectively.)
 - `is_same_file(path1, path2)` — Check if two paths refer to the same
   underlying file (via `os.path.samefile()` semantics).
 - `split_drive_letter(path)` — Split drive letter from path (Windows).
-- `is_unc_path(path)` — Check if path is UNC format.
-- `get_relative_path(path, base)` — Get relative path from base.
+- `is_unc_path(path)` — Check if path is UNC format. Platform-independent
+  (delegates to `unctools.is_unc_path`): `//server/share` is True everywhere.
+- `get_relative_path(path, base)` — Relative path from `base` **only when
+  `path` is a subpath of `base`** (`Path.relative_to`); returns None otherwise.
+- `compute_relative_path(target, start, fallback_to_absolute=True)` — **v0.3.0**:
+  the `..`-traversing relative path from `start` to `target` (`os.path.relpath`),
+  with a Windows cross-drive fallback. Distinct from `get_relative_path`.
 - `find_files(directory, patterns, exclude)` — Find files matching
   glob patterns.
 - `find_regex_files(directory, pattern)` — Find files matching a regex.
@@ -67,8 +71,29 @@ The following path helpers live in `dazzle_filekit.paths`:
   a counter if the original exists.
 - `create_dest_path(src, src_base, dst_base, path_style, include_base)` —
   Build a destination path for batch file operations.
-- `get_path_type(path)` — Detect path type (`unc`, `network`, `subst`,
-  `local`).
+- `classify_fs_object(path)` — **v0.3.0** (renamed from `get_path_type`):
+  classify WHAT a filesystem object is (`'file'`, `'directory'`, `'symlink'`,
+  `'socket'`, `'pipe'`, `'block_device'`, `'char_device'`, `'nonexistent'`,
+  `'unknown'`). A junction reports `'directory'` — use `analyze_link` below for
+  link-kind. (For a path's network *origin* — `unc`/`network`/`subst`/`local` —
+  use `unctools.classify_path_origin`.)
+
+### Link Primitives (v0.3.0, `dazzle_filekit.links`)
+
+Intrinsic link analysis and junction/hardlink creation (relational,
+destination-relative analysis lives at L3/preservelib):
+
+- `analyze_link(link_path)` → `LinkInfo` — intrinsic facts about one link (no
+  destination parameter): `kind` (`'symlink'`/`'junction'`/`'hardlink'`/`None`),
+  `raw_target`, `resolved_target`, `is_broken`, `is_circular` (direct
+  self-reference only). `LinkInfo.to_dict()` → `dazzle_lib.LinkTargetDict`.
+- `detect_link_type(path)` — the `kind` value alone, or `None`.
+- `read_link_target(path)` — raw target (symlink via `os.readlink`; junction via
+  the DeviceIoControl reparse buffer).
+- `create_junction(target, link, force=False)` — Windows NTFS junction via
+  PowerShell `New-Item` (directory-only, no elevation).
+- `create_hardlink(target, link, force=False)` — `os.link` (file-only,
+  cross-device aware).
 
 ---
 
@@ -76,6 +101,15 @@ The following path helpers live in `dazzle_filekit.paths`:
 
 Core operations live in `dazzle_filekit.operations` and are re-exported
 at the top level.
+
+> **Resolver edge (v0.3.0).** `open_file`, `copy_file`, `move_file`,
+> `copy_files_with_path`, `move_files_with_path`, `process_files`, and the
+> `content.*` helpers accept keyword-only `try_path_variants=False` /
+> `resolver=None`. When `try_path_variants=True`, a retryable failure
+> (`PermissionError` / `FileNotFoundError` / `OSError`) is retried under the
+> path's other names (UNC ↔ mapped drive), resolved by a
+> `dazzle_lib.PathVariantResolver` (default: unctools). Default off — existing
+> behavior is unchanged. See [unctools-integration.md](unctools-integration.md).
 
 ### Basic copy, move, remove
 
@@ -294,6 +328,8 @@ Path validation helpers in `dazzle_filekit.utils.validation`.
   v0.2.4** to use `DeviceIoControl(FSCTL_GET_REPARSE_POINT)` and
   correctly distinguish junctions (`IO_REPARSE_TAG_MOUNT_POINT`)
   from directory symlinks (`IO_REPARSE_TAG_SYMLINK`).
+- `read_junction_target(path)` — **v0.3.0**: the junction's target, read from
+  its reparse buffer (same DeviceIoControl machinery as `is_junction`).
 
 ---
 
@@ -307,4 +343,4 @@ Path validation helpers in `dazzle_filekit.utils.validation`.
 
 ## Version
 
-- `__version__` — Package version string. Currently `'0.2.4'`.
+- `__version__` — Package version string. Currently `'0.3.0'`.

@@ -35,12 +35,12 @@ and-center so anyone browsing the root can see them before bumping a pin.
   filekit. Defines the layering contract: filekit is primitives,
   preservelib is workflow, dependency direction is one-way
   (`preservelib → filekit`).
-- **[unctools-integration.md](unctools-integration.md)** — how to
-  compose [UNCtools](https://github.com/DazzleLib/UNCtools) with
-  filekit. filekit has native UNC *detection* (`is_unc_path`,
-  `get_path_type`); UNCtools adds UNC ↔ drive-letter *translation*.
-  Shows three user-side composition patterns with graceful
-  `ImportError` handling.
+- **[unctools-integration.md](unctools-integration.md)** — how
+  filekit (L1) and [UNCtools](https://github.com/DazzleLib/UNCtools)
+  (L0) compose. filekit has native UNC *detection* (`is_unc_path`,
+  `classify_fs_object`) and delegates UNC identity to UNCtools, a **hard
+  dependency as of 0.3.0**. Covers the `try_path_variants=` resolver
+  edge and explicit UNC ↔ drive-letter *translation* patterns.
 
 ## Planning / roadmap
 

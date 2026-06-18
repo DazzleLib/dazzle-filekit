@@ -206,22 +206,16 @@ def is_relative_path(path: Union[str, Path]) -> bool:
     return not Path(path).is_absolute()
 
 def is_unc_path(path: Union[str, Path]) -> bool:
+    r"""Check if a path is a UNC (``\\server\share``) path.
+
+    Canonical, platform-independent: delegates to the L0 path-identity
+    owner ``unctools.is_unc_path`` (normalizes ``/`` -> ``\`` then checks
+    the ``\\`` prefix). 0.3.0 collapsed this and ``paths.is_unc_path`` onto
+    that single source of truth -- they previously diverged on POSIX
+    (this returned ``//``-prefix True; ``paths`` returned False).
     """
-    Check if a path is a UNC (Universal Naming Convention) path.
-    
-    Args:
-        path: Path to check
-        
-    Returns:
-        True if the path is a UNC path, False otherwise
-    """
-    path_str = str(path)
-    
-    # UNC paths start with \\ on Windows or // on other platforms
-    if IS_WINDOWS:
-        return path_str.startswith('\\\\')
-    else:
-        return path_str.startswith('//')
+    from unctools import is_unc_path as _unc_is_unc_path
+    return _unc_is_unc_path(path)
 
 def is_hidden_path(path: Union[str, Path]) -> bool:
     """

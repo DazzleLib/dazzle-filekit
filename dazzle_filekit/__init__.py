@@ -24,8 +24,6 @@ if not logger.handlers:
 
 # Import core functionality
 from .paths import (
-    normalize_path,
-    normalize_path_no_resolve,
     is_same_file,
     split_drive_letter,
     is_unc_path,
@@ -37,7 +35,7 @@ from .paths import (
     collect_files_from_include_file,
     create_parent_dirs,
     ensure_unique_path,
-    get_path_type
+    classify_fs_object
 )
 
 from .utils.compat import (
@@ -187,8 +185,6 @@ __all__ = [
     'enable_verbose_logging',
     
     # Path functions
-    'normalize_path',
-    'normalize_path_no_resolve',
     'is_same_file',
     'split_drive_letter',
     'is_unc_path',
@@ -200,7 +196,7 @@ __all__ = [
     'collect_files_from_include_file',
     'create_parent_dirs',
     'ensure_unique_path',
-    'get_path_type',
+    'classify_fs_object',
 
     # Cross-platform path utilities
     'normalize_cross_platform_path',
