@@ -372,4 +372,5 @@ def path_exists_cross_platform(path: Union[str, Path]) -> bool:
 # mapping is path-identity knowledge owned by the L0 layer: this function's
 # WNetGetUniversalName provider-chain scan was folded into unctools' UNCConverter
 # (unctools 0.2.2, _get_mappings_with_wnetuniversalname). Use
-# `unctools.get_mappings()` / `unctools.get_reverse_mappings()` instead.
+# `unctools.converter.get_mappings()` (UNC->drive) or
+# `unctools.converter.UNCConverter().get_reverse_mappings()` (drive->UNC) instead.

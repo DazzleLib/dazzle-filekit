@@ -167,8 +167,15 @@ libraries composable without filekit reaching into unctools' internals -- fileki
 only ever asks "what are this path's other names?" through the seam.
 
 UNCtools also owns drive↔UNC *mapping tables* (it absorbed filekit's former
-`get_drive_mappings` in 0.3.0 / stack V9): use `unctools.get_mappings()` /
-`unctools.get_reverse_mappings()`.
+`get_drive_mappings` in 0.3.0 / stack V9):
+
+```python
+from unctools.converter import get_mappings, UNCConverter
+
+get_mappings()                          # {unc: drive}  -- the global converter
+UNCConverter().get_reverse_mappings()   # {drive: unc}  -- the direction the old
+                                        #                  get_drive_mappings returned
+```
 
 ---
 

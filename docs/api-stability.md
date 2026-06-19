@@ -25,7 +25,7 @@ Last audited: 2026-06-17 (filekit v0.3.0, #15 complete -- link primitives, D4 re
 | `paths.normalize_path_no_resolve(p)` | `normalize_cross_platform_path(p)` (default `resolve=False`, link-safe) | dazzlecmd `dazzlecmd_lib/core/safedel/_classifier.py` |
 | `paths.get_path_type(p)` | `paths.classify_fs_object(p)` (identical behavior) | (no external caller) |
 | `paths.is_unc_path` / `utils.validation.is_unc_path` (divergent copies) | one canonical def delegating to `unctools.is_unc_path` -- `//server/share` is now True on every platform | (behavior superset; no caller broke) |
-| `utils.compat.get_drive_mappings()` | `unctools.get_mappings()` / `get_reverse_mappings()` (V9 fold into unctools 0.2.2) | (no caller; never exported) |
+| `utils.compat.get_drive_mappings()` | `unctools.converter.get_mappings()` / `UNCConverter().get_reverse_mappings()` (V9 fold into unctools 0.2.2) | (no caller; never exported) |
 
 ---
 
