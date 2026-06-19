@@ -263,12 +263,17 @@ def split_drive_letter(path: Union[str, Path]) -> Tuple[str, str]:
 def is_unc_path(path: Union[str, Path]) -> bool:
     r"""Check if a path is a UNC (``\\server\share``) path.
 
-    Canonical, platform-independent: delegates to the L0 path-identity
-    owner ``unctools.is_unc_path``, which normalizes ``/`` -> ``\`` and
-    then checks the ``\\`` prefix -- so ``//server/share`` is recognized on
-    every platform. This is a strict superset of (and replaces, in 0.3.0)
-    the previously divergent win32-only check here and the POSIX-``//``
-    check in ``utils.validation``.
+    **This is a thin convenience WRAPPER**, not the canonical home. UNC
+    detection is a path-IDENTITY question, which the stack assigns to L0 --
+    so this delegates to ``unctools.is_unc_path`` (the owner). It is kept
+    public in filekit only as a convenience for file-operation callers, and
+    **may be deprecated in 0.4.0** in favour of importing
+    ``unctools.is_unc_path`` directly.
+
+    Behaviour (from the owner): normalizes ``/`` -> ``\`` then checks the
+    ``\\`` prefix, so ``//server/share`` is recognized on every platform.
+    0.3.0 collapsed filekit's two previously-divergent copies (win32-only
+    here, POSIX-``//`` in ``utils.validation``) onto this single delegate.
     """
     from unctools import is_unc_path as _unc_is_unc_path
     return _unc_is_unc_path(path)

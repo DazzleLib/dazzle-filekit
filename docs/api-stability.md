@@ -44,7 +44,8 @@ Last audited: 2026-06-17 (filekit v0.3.0, #15 complete -- link primitives, D4 re
 | `apply_file_metadata` | preservelib workflows. **v0.2.4 note**: honors the new fields when present. **v0.3.0**: `metadata=` param typed as `dazzle_lib.FileMetadataDict`. |
 | ~~`normalize_path`~~ | **Removed in 0.3.0 (clean break)** -> `normalize_cross_platform_path(path, resolve=True)`. dazzlecmd migrated in-cycle. |
 | `is_same_file` | README example |
-| `find_files`, `is_unc_path` | README example. **v0.3.0**: `is_unc_path` is now platform-independent (`//server/share` -> True everywhere). |
+| `find_files` | README example |
+| `is_unc_path` | README example. **v0.3.0**: platform-independent (`//server/share` -> True everywhere). **Now a thin convenience wrapper delegating to the L0 owner `unctools.is_unc_path`; may be deprecated in 0.4.0** -- prefer `unctools.is_unc_path` directly. |
 | `classify_fs_object` | **v0.3.0** (renamed from `get_path_type`): classifies WHAT a filesystem object is. |
 | `get_disk_usage`, `check_disk_space`, `ensure_disk_space` | README example |
 | `verify_file_hash`, `verify_copied_files` | README example |
