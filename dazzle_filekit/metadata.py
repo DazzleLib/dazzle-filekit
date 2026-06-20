@@ -194,6 +194,78 @@ def _collect_windows_metadata(path: Path) -> Dict[str, Any]:
         logger.error(f"Error collecting Windows metadata for {path}: {e}")
         return windows_metadata
 
+def _set_symlink_timestamps(path_obj: Path, timestamps: Dict[str, Any]) -> bool:
+    """Apply timestamps to a symlink ITSELF, never the target it points to.
+
+    ``os.utime()`` and a default Win32 ``CreateFile`` both follow the reparse
+    point to the target -- so applying timestamps to a link the naive way
+    silently corrupts the *target's* timestamps. On Windows we open the link
+    with ``FILE_FLAG_OPEN_REPARSE_POINT`` and use ``SetFileTime``; on POSIX we
+    use ``os.utime(follow_symlinks=False)``. Best-effort: returns False (with a
+    warning) when the platform/runtime can't set link timestamps -- it never
+    falls back to touching the target.
+    """
+    accessed = timestamps.get('accessed')
+    modified = timestamps.get('modified')
+    created = timestamps.get('created')
+
+    if platform.system() != 'Windows':
+        if (os.utime in os.supports_follow_symlinks
+                and accessed is not None and modified is not None):
+            try:
+                os.utime(path_obj, (accessed, modified), follow_symlinks=False)
+                return True
+            except Exception as e:
+                logger.warning(f"Error applying symlink timestamps to {path_obj}: {e}")
+                return False
+        logger.warning(
+            f"Cannot set link timestamps for {path_obj} on this platform without "
+            f"following to the target; skipped."
+        )
+        return False
+
+    # Windows: open the link itself (FILE_FLAG_OPEN_REPARSE_POINT) + SetFileTime.
+    if not is_win32_available():
+        logger.warning(
+            f"pywin32 unavailable; cannot set link timestamps for {path_obj} "
+            f"without following to the target; skipped."
+        )
+        return False
+    try:
+        import win32file
+        import win32con
+        import pywintypes
+
+        FILE_WRITE_ATTRIBUTES = 0x100
+        FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+
+        def _wt(value):
+            if value is None:
+                return None
+            dt = (datetime.datetime.fromtimestamp(value)
+                  if isinstance(value, (int, float)) else value)
+            return pywintypes.Time(dt)
+
+        handle = win32file.CreateFile(
+            str(path_obj),
+            FILE_WRITE_ATTRIBUTES,
+            win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE,
+            None,
+            win32con.OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | win32con.FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        try:
+            # SetFileTime(handle, creation, access, write) -- None leaves unchanged.
+            win32file.SetFileTime(handle, _wt(created), _wt(accessed), _wt(modified))
+        finally:
+            handle.close()
+        return True
+    except Exception as e:
+        logger.warning(f"Error applying symlink timestamps to {path_obj}: {e}")
+        return False
+
+
 def apply_file_metadata(path: Union[str, Path], metadata: FileMetadataDict) -> bool:
     """
     Apply metadata to a file.
@@ -217,23 +289,30 @@ def apply_file_metadata(path: Union[str, Path], metadata: FileMetadataDict) -> b
                 logger.warning(f"Error applying permissions to {path}: {e}")
                 success = False
 
-        # Apply timestamps (mtime and atime via os.utime)
+        # Apply timestamps. Symlinks need special handling: os.utime() and the
+        # default Win32 handle follow the reparse point and would write to the
+        # TARGET, so route links through a link-targeting helper that sets all
+        # three times on the link itself.
         if 'timestamps' in metadata:
             timestamps = metadata['timestamps']
-            try:
-                os.utime(
-                    path_obj,
-                    (timestamps['accessed'], timestamps['modified'])
-                )
-            except Exception as e:
-                logger.warning(f"Error applying timestamps to {path}: {e}")
-                success = False
+            if path_obj.is_symlink():
+                if not _set_symlink_timestamps(path_obj, timestamps):
+                    success = False
+            else:
+                try:
+                    os.utime(
+                        path_obj,
+                        (timestamps['accessed'], timestamps['modified'])
+                    )
+                except Exception as e:
+                    logger.warning(f"Error applying timestamps to {path}: {e}")
+                    success = False
 
-            # On Windows, also restore creation time via pywin32
-            if platform.system() == 'Windows' and 'created' in timestamps:
-                if not restore_windows_creation_time(path_obj, timestamps['created']):
-                    # Non-fatal -- ctime restoration is best-effort
-                    pass
+                # On Windows, also restore creation time via pywin32
+                if platform.system() == 'Windows' and 'created' in timestamps:
+                    if not restore_windows_creation_time(path_obj, timestamps['created']):
+                        # Non-fatal -- ctime restoration is best-effort
+                        pass
 
         # Apply platform-specific metadata
         if platform.system() == 'Windows' and 'windows' in metadata:
@@ -858,6 +937,10 @@ def restore_windows_creation_time(
             flags = win32con.FILE_FLAG_BACKUP_SEMANTICS
         else:
             flags = win32con.FILE_ATTRIBUTE_NORMAL
+        # Symlinks: open the link itself, not the target it points to, so the
+        # creation time lands on the link (otherwise CreateFile follows it).
+        if path_obj.is_symlink():
+            flags |= 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
 
         # Handle readonly files: clear attribute, set time, restore attribute
         readonly_cleared = False

@@ -118,7 +118,7 @@ from .links import (
     create_hardlink,
 )
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """

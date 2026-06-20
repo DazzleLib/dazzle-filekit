@@ -5,6 +5,12 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-20
+
+### Fixed
+- `apply_file_metadata` corrupted a **symlink target's** timestamps instead of the link's. `os.utime()` (and the default Win32 `CreateFile` used for creation time) follow the reparse point to the target, so applying a record's timestamps to a link wrote them to the target file and left the link untouched -- with a "set the link to the original symlink's time" strategy this actively rewrote the target's mtime. Symlinks are now routed through a link-targeting path: Windows opens the link with `FILE_FLAG_OPEN_REPARSE_POINT` + `SetFileTime` (all three times); POSIX uses `os.utime(follow_symlinks=False)`. Regular-file behavior is unchanged. `restore_windows_creation_time` gained the same reparse-point handling for direct symlink calls.
+- Surfaced by the dazzle-linklib / dazzlelink link-record extraction: the tool's `recreate`/`import` timestamp strategies (`symlink`, `target`) recreate a symlink and restore its timestamps, which now land on the link as intended.
+
 ## [0.3.0] - 2026-06-17
 
 Restores the file-operation capabilities unctools shed in its 0.2.0
