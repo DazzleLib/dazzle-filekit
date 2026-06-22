@@ -30,6 +30,7 @@ from dazzle_filekit import (
     detect_link_type,
     get_relative_path,
     read_link_target,
+    remove_link,
 )
 from dazzle_filekit import links as links_mod
 
@@ -250,3 +251,53 @@ def test_no_cmd_shellouts_in_link_module():
         "link primitives must not shell out to cmd.exe (use PowerShell / DeviceIoControl)"
     )
     assert "powershell" in source.lower()
+
+
+# ---------------------------------------------------------------------------
+# AC-5 (R7): remove_link detaches a link WITHOUT deleting its target
+# ---------------------------------------------------------------------------
+
+
+def test_remove_link_not_a_link_returns_false(tmp_path):
+    f = tmp_path / "plain.txt"
+    f.write_text("data")
+    assert remove_link(f) is False
+    assert f.exists()  # a real file is never removed
+
+
+def test_remove_link_file_symlink_keeps_target(tmp_path):
+    target = tmp_path / "t.txt"
+    target.write_text("payload")
+    link = tmp_path / "s.txt"
+    if not _try_symlink(target, link):
+        pytest.skip("symlink privilege not available")
+    assert detect_link_type(link) == "symlink"
+    assert remove_link(link) is True
+    assert not link.exists()                 # link detached
+    assert target.read_text() == "payload"   # target file survives
+
+
+def test_remove_link_hardlink_keeps_data(tmp_path):
+    src = tmp_path / "file.txt"
+    src.write_text("hard data")
+    link = tmp_path / "hard.txt"
+    if not create_hardlink(src, link):
+        pytest.skip("hard links not supported on this filesystem")
+    assert remove_link(link) is True
+    assert not link.exists()                 # the second name is gone
+    assert src.read_text() == "hard data"    # data survives via the original name
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows-only")
+def test_remove_link_junction_keeps_target_tree(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "inside.txt").write_text("keepme")
+    link = tmp_path / "jct"
+    if not create_junction(target, link):
+        pytest.skip("could not create junction in this environment")
+    assert detect_link_type(link) == "junction"
+    assert remove_link(link) is True
+    assert not link.exists()                              # junction detached
+    assert target.is_dir()                                # target dir survives
+    assert (target / "inside.txt").read_text() == "keepme"  # contents intact

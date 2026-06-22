@@ -316,3 +316,43 @@ def create_hardlink(
         else:
             logger.error(f"Failed to create hard link {link_path}: {e}")
         return False
+
+
+def remove_link(path: Union[str, Path]) -> bool:
+    """Remove (detach) a symlink, junction, or hard link WITHOUT deleting its
+    target.
+
+    The inverse of :func:`create_junction` / :func:`create_hardlink` /
+    :func:`create_symlink`:
+
+    * a **junction** is detached with ``os.rmdir`` -- the reparse point is
+      removed, the target directory tree is left untouched;
+    * a **directory symlink** (Windows) is likewise removed with ``os.rmdir``;
+      a **file symlink** with ``unlink`` -- the target file stays;
+    * a **hard link** is removed with ``unlink``, which only decrements the
+      file's link count (the data survives while another name remains).
+
+    Returns True on success, False if ``path`` is not a link or removal fails
+    (the reason is logged). Ported from preservelib (R7); the conservation
+    verdict returned this intrinsic link primitive to its L1 home.
+    """
+    p = Path(path)
+    kind = detect_link_type(p)
+    if kind is None:
+        logger.error(f"remove_link: not a link: {p}")
+        return False
+    try:
+        if kind == LINK_JUNCTION:
+            os.rmdir(p)                 # detach junction; target tree untouched
+        elif kind == LINK_SYMLINK:
+            if p.is_dir():
+                os.rmdir(p)             # directory symlink (Windows)
+            else:
+                p.unlink()              # file symlink
+        elif kind == LINK_HARDLINK:
+            p.unlink()                  # decrements the file's link count
+        logger.debug(f"Removed {kind} link: {p}")
+        return True
+    except OSError as e:
+        logger.error(f"remove_link({p}) failed: {e}")
+        return False

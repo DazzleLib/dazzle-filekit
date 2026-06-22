@@ -5,6 +5,11 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-06-22
+
+### Added
+- `links.remove_link(path)` -- detach a symlink, junction, or hard link **without deleting its target**: a junction or directory symlink is removed with `os.rmdir` (the target tree is untouched); a file symlink with `unlink`; a hard link with `unlink` (only the link count drops). Returns `bool`; composes on the reparse-tag-correct `detect_link_type`. Completes the intrinsic link primitive family (`create_junction` / `create_hardlink` / `remove_link`). Ported from preservelib (stack R7 conservation verdict -- the primitive returns to its L1 home for the P3 dazzle-preservelib extraction to delegate to). Red-green verified (the "target survives" assertion fails on an implementation that follows into the target).
+
 ## [0.3.1] - 2026-06-20
 
 ### Fixed

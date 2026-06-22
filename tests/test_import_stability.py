@@ -66,6 +66,7 @@ TOP_LEVEL_LOCKED = [
     "read_link_target",
     "create_junction",
     "create_hardlink",
+    "remove_link",
     "compute_relative_path",
     "links",  # the submodule
 ]
@@ -142,6 +143,7 @@ SUBMODULE_LOCKED = {
         "read_link_target",
         "create_junction",
         "create_hardlink",
+        "remove_link",
     ],
     "dazzle_filekit.utils.validation": [
         "is_junction",

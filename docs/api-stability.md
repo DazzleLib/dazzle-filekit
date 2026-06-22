@@ -70,6 +70,7 @@ Restored from unctools' 0.2.0 split (STACK-MAP D7), as the Option D resolver edg
 | `dazzle_filekit.links` (submodule) + `LinkInfo` / `analyze_link(link_path)` | Intrinsic link analysis (no destination param); `LinkInfo.to_dict()` -> `dazzle_lib.LinkTargetDict` |
 | `detect_link_type` / `read_link_target` | Link kind (`symlink`/`junction`/`hardlink`/`None`) + target read (DeviceIoControl for junctions) |
 | `create_junction` / `create_hardlink` | PowerShell junction + `os.link` hardlink |
+| `remove_link` | Detach a symlink/junction/hardlink without deleting its target (v0.3.2) |
 | `paths.compute_relative_path(target, start)` | `..`-traversing relative path (distinct from `get_relative_path`) |
 | `utils.validation.read_junction_target` | Junction target via the reparse buffer |
 

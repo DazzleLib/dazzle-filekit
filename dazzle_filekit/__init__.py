@@ -116,9 +116,10 @@ from .links import (
     read_link_target,
     create_junction,
     create_hardlink,
+    remove_link,
 )
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -256,6 +257,7 @@ __all__ = [
     'read_link_target',
     'create_junction',
     'create_hardlink',
+    'remove_link',
 
     # Verification functions
     'calculate_file_hash',
