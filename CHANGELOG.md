@@ -5,6 +5,10 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-07-03
+
+`atomic_write_text` (and therefore `atomic_write_json`) absorbs transient Windows `PermissionError [WinError 5]` on the final `os.replace` with a bounded retry (6 attempts, 10-160ms backoff, ~0.3s worst case). Antivirus/indexer processes briefly lock freshly-written files; the first rename can fail even though no cooperating process holds the file -- observed in the wild as one random victim test per dazzlecmd full-suite run (`tmp.config.json -> config.json`). A persistent permission problem still raises.
+
 ## [0.3.2] - 2026-06-22
 
 ### Added

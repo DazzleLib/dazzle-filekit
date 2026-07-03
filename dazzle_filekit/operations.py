@@ -66,7 +66,20 @@ def atomic_write_text(
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with open(tmp_path, "w", encoding=encoding, newline=newline) as f:
         f.write(content)
-    os.replace(str(tmp_path), str(path))
+    # Windows: antivirus/indexers briefly lock freshly-written files, so a
+    # first os.replace can fail with PermissionError [WinError 5] even
+    # though nothing of ours holds the file (observed in the wild: one
+    # random victim test per dazzlecmd full-suite run). A short bounded
+    # retry absorbs the transient; a REAL permission problem still
+    # surfaces after ~0.3s total.
+    for attempt in range(6):
+        try:
+            os.replace(str(tmp_path), str(path))
+            break
+        except PermissionError:
+            if attempt == 5:
+                raise
+            time.sleep(0.01 * (2 ** attempt))  # 10..160ms backoff
 
 
 def atomic_write_json(
