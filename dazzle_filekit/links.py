@@ -97,10 +97,20 @@ def detect_link_type(path: Union[str, Path]) -> Optional[str]:
     Returns ``'symlink'``, ``'junction'`` (Windows), or ``'hardlink'`` (a file
     whose ``st_nlink > 1``). Hard links are otherwise indistinguishable from
     regular files, so a single-name file is reported as ``None``.
+
+    Existence is checked with ``os.lstat`` (the link ITSELF), not
+    ``Path.exists()`` (which follows the link): a junction whose target is
+    missing is still a junction and must be reported as one, so
+    ``analyze_link`` can mark it broken. The previous ``exists()`` gate
+    special-cased broken symlinks but silently dropped broken junctions
+    (contributed from dazzlesum, whose walker must refuse to traverse
+    broken junctions rather than treat them as plain directories).
     """
     p = Path(path)
 
-    if not p.exists() and not p.is_symlink():
+    try:
+        os.lstat(p)
+    except OSError:
         return None
 
     if p.is_symlink():

@@ -269,9 +269,12 @@ def is_junction(path: Union[str, Path]) -> bool:
     (``IO_REPARSE_TAG_MOUNT_POINT`` vs ``IO_REPARSE_TAG_SYMLINK``) and
     different cross-platform semantics.
 
-    Implementation uses ``DeviceIoControl(FSCTL_GET_REPARSE_POINT)`` to
-    read the reparse tag and check it's specifically
-    ``IO_REPARSE_TAG_MOUNT_POINT``. This is the only reliable method.
+    Implementation: on Python 3.12+ this is ``os.path.isjunction`` (the
+    same mount-point reparse-tag check, answered from a single lstat --
+    no handle open). On older Pythons it uses
+    ``DeviceIoControl(FSCTL_GET_REPARSE_POINT)`` to read the reparse tag
+    and check it's specifically ``IO_REPARSE_TAG_MOUNT_POINT``. Both
+    methods are reliable; the ctypes path is the only option before 3.12.
 
     History: in filekit <= v0.2.3, this function referenced
     ``win32file.FILE_ATTRIBUTE_REPARSE_POINT`` (which doesn't exist --
@@ -293,6 +296,18 @@ def is_junction(path: Union[str, Path]) -> bool:
     """
     if not IS_WINDOWS:
         return False
+
+    # Python 3.12+ fast path: os.path.isjunction performs the same
+    # mount-point reparse-tag check from a single lstat -- no handle open,
+    # no DeviceIoControl. Matters when callers probe every directory of a
+    # large walk (contributed from dazzlesum's traversal profiling: the
+    # handle-open probe is ~3 syscalls per directory vs lstat's one).
+    isjunction = getattr(os.path, 'isjunction', None)
+    if isjunction is not None:
+        try:
+            return bool(isjunction(str(path)))
+        except (OSError, ValueError):
+            return False
 
     try:
         import ctypes
