@@ -76,6 +76,8 @@ from .operations import (
     atomic_write_text,
     atomic_write_json,
     copy_tree_preserving_links,
+    # Streaming atomic writer (from dazzlesum's MonolithicWriter)
+    AtomicStreamWriter,
 )
 
 from .verification import (
@@ -236,6 +238,7 @@ __all__ = [
     'atomic_write_text',
     'atomic_write_json',
     'copy_tree_preserving_links',
+    'AtomicStreamWriter',
 
     # Rich metadata module (v0.2.4)
     'metadata',

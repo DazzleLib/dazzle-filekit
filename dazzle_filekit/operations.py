@@ -120,6 +120,135 @@ def atomic_write_json(
     atomic_write_text(path, text, encoding="utf-8")
 
 
+class AtomicStreamWriter:
+    """Streaming counterpart of :func:`atomic_write_text`.
+
+    For content too large -- or too incremental -- to build in memory:
+    writes go to a sibling ``.tmp`` file, and on successful close the tmp
+    is renamed over ``path`` via ``os.replace``. Readers observing ``path``
+    see either the old contents or the complete new contents, never a
+    partial write. On failure (an exception inside the ``with`` block, or
+    an explicit ``close(success=False)``) the destination is untouched and
+    the tmp is removed.
+
+    Options (all keyword-only):
+
+    * ``resume_from_existing``: seed the tmp with the current contents of
+      ``path`` (``shutil.copy2``) and open it in append mode -- for
+      resuming an interrupted long-running write. When ``path`` does not
+      exist this degrades to a normal fresh write.
+    * ``fsync_on_flush``: make each :meth:`flush` also ``os.fsync``,
+      bounding data loss to the last flush for observers tailing the tmp
+      during very long runs (fsync failures are swallowed -- not every
+      platform/filesystem supports it).
+    * ``encoding`` / ``newline`` / ``buffering``: passed to ``open()``,
+      with the same defaults as :func:`atomic_write_text`.
+
+    Usage::
+
+        with AtomicStreamWriter(dest, fsync_on_flush=True) as w:
+            for chunk in produce():
+                w.write(chunk)
+                w.flush()
+
+    Provenance: generalized from dazzlesum's ``MonolithicWriter`` (its
+    streaming checksum-manifest writer), minus the domain concerns
+    (headers, footers, overwrite prompts). The one-shot sibling of this
+    class is :func:`atomic_write_text`.
+    """
+
+    def __init__(
+        self,
+        path: Union[str, Path],
+        *,
+        encoding: str = "utf-8",
+        newline: Optional[str] = None,
+        resume_from_existing: bool = False,
+        fsync_on_flush: bool = False,
+        buffering: int = -1,
+    ) -> None:
+        self.path = Path(path)
+        self.tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        self.encoding = encoding
+        self.newline = newline
+        self.resume_from_existing = resume_from_existing
+        self.fsync_on_flush = fsync_on_flush
+        self.buffering = buffering
+        self._file = None
+        self._closed = False
+
+    def __enter__(self) -> "AtomicStreamWriter":
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close(success=exc_type is None)
+
+    def open(self) -> "AtomicStreamWriter":
+        """Open the tmp file for writing (called automatically by ``with``)."""
+        if self._file is not None:
+            return self
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.resume_from_existing and self.path.exists():
+            shutil.copy2(str(self.path), str(self.tmp_path))
+            mode = "a"
+        else:
+            mode = "w"
+        self._file = open(
+            self.tmp_path, mode,
+            encoding=self.encoding, newline=self.newline,
+            buffering=self.buffering,
+        )
+        self._closed = False
+        return self
+
+    def write(self, text: str) -> None:
+        """Write ``text`` to the tmp file."""
+        if self._file is None:
+            raise ValueError("AtomicStreamWriter is not open")
+        self._file.write(text)
+
+    def flush(self) -> None:
+        """Flush buffered writes to the tmp file (and fsync when enabled)."""
+        if self._file is None:
+            raise ValueError("AtomicStreamWriter is not open")
+        self._file.flush()
+        if self.fsync_on_flush:
+            try:
+                os.fsync(self._file.fileno())
+            except (OSError, AttributeError):
+                # fsync is not available on every platform/filesystem
+                pass
+
+    def close(self, success: bool = True) -> None:
+        """Finalize: rename tmp over ``path`` on success, discard it otherwise.
+
+        Idempotent; safe to call after the ``with`` block has already
+        closed the writer.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if self._file is not None:
+                self._file.close()
+                self._file = None
+            if success:
+                os.replace(str(self.tmp_path), str(self.path))
+            else:
+                self._discard_tmp()
+        except Exception:
+            self._discard_tmp()
+            raise
+
+    def _discard_tmp(self) -> None:
+        try:
+            if self.tmp_path.exists():
+                os.remove(str(self.tmp_path))
+        except OSError as e:
+            logger.warning(f"Could not remove temp file {self.tmp_path}: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Link-safe tree copy (v0.2.4)
 # ---------------------------------------------------------------------------
