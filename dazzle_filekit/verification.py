@@ -9,6 +9,7 @@ import os
 import sys
 import hashlib
 import logging
+import subprocess
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple, Any, Set, Callable
@@ -89,8 +90,237 @@ def calculate_file_hash(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Native checksum-tool backend (contributed from dazzlesum)
+# ---------------------------------------------------------------------------
+#
+# Platform checksum tools (sha256sum, certutil, fsum, shasum, md5) can be
+# substantially faster than hashlib for large files and offload the work to
+# a separate process. This backend detects an available tool for a given
+# algorithm and shells out to it, parsing its output back to a bare hex
+# digest. It is OPTIONAL and additive: calculate_file_hash remains the
+# pure-Python reference implementation, and calculate_file_hash_native
+# returns None (never raises) when no tool works, so callers can fall back:
+#
+#     digest = calculate_file_hash_native(path, 'sha256')
+#     if digest is None:
+#         digest = calculate_file_hash(path, ['sha256']).get('sha256')
+#
+# Ported from dazzlesum's DazzleHashCalculator (tool detection and the
+# per-tool output parsers), reshaped to filekit's module-function style.
+
+# Detection results per algorithm, so a directory-scale caller probes each
+# tool at most once per process.
+_NATIVE_TOOL_CACHE: Dict[str, Optional[str]] = {}
+
+
+def _native_tool_available(tool: str) -> bool:
+    """Check if a native checksum tool is runnable on this system."""
+    try:
+        # Special handling for fsum: it prints usage info without arguments
+        if tool == 'fsum':
+            result = subprocess.run([tool], capture_output=True, text=True,
+                                    encoding='utf-8', errors='replace', timeout=5)
+            return 'SlavaSoft' in result.stdout or 'fsum' in result.stdout.lower()
+
+        # For other tools, try --help / --version
+        for flag in ['--help', '--version', '-h']:
+            try:
+                result = subprocess.run([tool, flag], capture_output=True, text=True,
+                                        encoding='utf-8', errors='replace', timeout=5)
+                if result.returncode == 0 or 'usage' in result.stderr.lower():
+                    return True
+            except Exception:
+                continue
+
+        return False
+    except Exception:
+        return False
+
+
+def detect_native_hash_tool(
+    algorithm: str = 'sha256',
+    use_cache: bool = True,
+) -> Optional[str]:
+    """Detect an available native checksum tool for ``algorithm``.
+
+    Probes the platform's likely tools (Windows: ``fsum``, ``certutil``;
+    Unix: the ``*sum`` family, ``shasum``, ``md5``) and returns the first
+    runnable one, or None if none work. Results are cached per algorithm
+    for the life of the process (pass ``use_cache=False`` to re-probe).
+
+    Args:
+        algorithm: Hash algorithm name (``md5``/``sha1``/``sha256``/``sha512``).
+        use_cache: Reuse (and populate) the per-process detection cache.
+
+    Returns:
+        The tool name (e.g. ``'sha256sum'``), or None.
+    """
+    algorithm = algorithm.lower()
+    if use_cache and algorithm in _NATIVE_TOOL_CACHE:
+        return _NATIVE_TOOL_CACHE[algorithm]
+
+    if sys.platform == 'win32':
+        tools_to_try = ['fsum', 'certutil']
+    elif algorithm == 'sha256':
+        tools_to_try = ['sha256sum', 'shasum']
+    elif algorithm == 'sha1':
+        tools_to_try = ['sha1sum', 'shasum']
+    elif algorithm == 'md5':
+        tools_to_try = ['md5sum', 'md5']
+    elif algorithm == 'sha512':
+        tools_to_try = ['sha512sum', 'shasum']
+    else:
+        tools_to_try = []
+
+    found = None
+    for tool in tools_to_try:
+        if _native_tool_available(tool):
+            found = tool
+            break
+
+    if found:
+        logger.debug(f"Using native tool: {found}")
+    else:
+        logger.debug(f"No native checksum tool available for {algorithm}")
+    if use_cache:
+        _NATIVE_TOOL_CACHE[algorithm] = found
+    return found
+
+
+def _hash_with_fsum(file_path: Path, algorithm: str) -> str:
+    """Calculate hash using the Windows fsum tool."""
+    cmd = ['fsum', f'-{algorithm}', str(file_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=300)
+
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+
+    # Parse fsum output - skip header lines and comments
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        # Skip empty lines, comment lines, and header lines
+        if not line or line.startswith(';') or line.startswith('SlavaSoft'):
+            continue
+
+        # Look for hash lines - they contain the filename with * prefix
+        if ' *' in line:
+            return line.split(' *')[0].strip().lower()
+
+        # Alternative format: hash followed by space and filename
+        parts = line.split()
+        if len(parts) >= 2 and len(parts[0]) in [32, 40, 64, 128]:  # Common hash lengths
+            return parts[0].lower()
+
+    raise ValueError(f"Could not parse fsum output: {result.stdout}")
+
+
+def _hash_with_certutil(file_path: Path, algorithm: str) -> str:
+    """Calculate hash using Windows certutil."""
+    algo_map = {'md5': 'MD5', 'sha1': 'SHA1', 'sha256': 'SHA256', 'sha512': 'SHA512'}
+    certutil_algo = algo_map.get(algorithm)
+
+    if not certutil_algo:
+        raise ValueError(f"Unsupported algorithm for certutil: {algorithm}")
+
+    cmd = ['certutil', '-hashfile', str(file_path), certutil_algo]
+    result = subprocess.run(cmd, capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=300)
+
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+
+    # Parse certutil output - hash is typically on the second non-empty line
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    for line in lines[1:]:  # Skip first line (filename)
+        # Remove spaces and check if it looks like a hash
+        clean_line = line.replace(' ', '').replace('\t', '')
+        if len(clean_line) in [32, 40, 64, 128] and \
+                all(c in '0123456789abcdefABCDEF' for c in clean_line):
+            return clean_line.lower()
+
+    raise ValueError(f"Could not parse certutil output: {result.stdout}")
+
+
+def _hash_with_hashsum(file_path: Path, tool: str) -> str:
+    """Calculate hash using the Unix *sum tools."""
+    cmd = [tool, str(file_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=300)
+
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+
+    # Parse output (first field is hash)
+    first_line = result.stdout.strip().split('\n')[0]
+    return first_line.split()[0].lower()
+
+
+def _hash_with_shasum(file_path: Path, algorithm: str) -> str:
+    """Calculate hash using the shasum tool."""
+    algo_map = {'sha1': '1', 'sha256': '256', 'sha512': '512'}
+    shasum_algo = algo_map.get(algorithm)
+
+    if not shasum_algo:
+        raise ValueError(f"Unsupported algorithm for shasum: {algorithm}")
+
+    cmd = ['shasum', f'-a{shasum_algo}', str(file_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=300)
+
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+
+    # Parse output (first field is hash)
+    first_line = result.stdout.strip().split('\n')[0]
+    return first_line.split()[0].lower()
+
+
+def calculate_file_hash_native(
+    file_path: Union[str, Path],
+    algorithm: str = 'sha256',
+    tool: Optional[str] = None,
+) -> Optional[str]:
+    """Calculate a file's hash with a native checksum tool.
+
+    Args:
+        file_path: Path to the file.
+        algorithm: Hash algorithm name (``md5``/``sha1``/``sha256``/``sha512``).
+        tool: Tool to use (``fsum``/``certutil``/``sha256sum``/.../``shasum``);
+            auto-detected via :func:`detect_native_hash_tool` when None.
+
+    Returns:
+        The lowercase hex digest, or None when no tool is available or the
+        tool fails (the reason is logged at debug level) -- callers fall
+        back to :func:`calculate_file_hash`.
+    """
+    algorithm = algorithm.lower()
+    if tool is None:
+        tool = detect_native_hash_tool(algorithm)
+    if tool is None:
+        return None
+
+    try:
+        if tool == 'fsum':
+            return _hash_with_fsum(Path(file_path), algorithm)
+        if tool == 'certutil':
+            return _hash_with_certutil(Path(file_path), algorithm)
+        if tool == 'shasum':
+            return _hash_with_shasum(Path(file_path), algorithm)
+        if tool.endswith('sum'):
+            return _hash_with_hashsum(Path(file_path), tool)
+        # BSD 'md5' prints "MD5 (file) = hash" -- not first-field parseable;
+        # dazzlesum never dispatched it either (it fell back to Python).
+        logger.debug(f"Unsupported native tool: {tool}")
+        return None
+    except Exception as e:
+        logger.debug(f"Native tool {tool} failed for {file_path}: {e}")
+        return None
+
+
 def verify_file_hash(
-    file_path: Union[str, Path], 
+    file_path: Union[str, Path],
     expected_hashes: Dict[str, str]
 ) -> Tuple[bool, Dict[str, Tuple[bool, str, str]]]:
     """

@@ -82,6 +82,9 @@ from .operations import (
 
 from .verification import (
     calculate_file_hash,
+    # Native checksum-tool backend (from dazzlesum)
+    detect_native_hash_tool,
+    calculate_file_hash_native,
     verify_file_hash,
     verify_files_with_manifest,
     calculate_directory_hashes,
@@ -264,6 +267,8 @@ __all__ = [
 
     # Verification functions
     'calculate_file_hash',
+    'detect_native_hash_tool',
+    'calculate_file_hash_native',
     'verify_file_hash',
     'verify_files_with_manifest',
     'calculate_directory_hashes',
