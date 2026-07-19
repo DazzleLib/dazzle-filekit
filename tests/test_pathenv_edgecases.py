@@ -117,19 +117,23 @@ class TestUnicodeAndLength:
 
 class TestPlatformNoneHostBehavior:
     def test_platform_none_uses_actual_host(self):
-        # On this machine (win32) host_path_platform() must be "windows".
-        assert host_path_platform() == PLATFORM_WINDOWS
-        assert os.name == "nt"
+        expected = PLATFORM_WINDOWS if os.name == "nt" else PLATFORM_POSIX
+        assert host_path_platform() == expected
 
-    def test_split_platform_none_matches_os_pathsep_semantics(self):
-        # platform=None should behave like the *declared* host dialect, which
-        # on windows is ';' -- confirm it does NOT fall back to os.pathsep
-        # doing something different (os.pathsep IS ';' on windows so this
-        # is a weak check, but documents the intended contract).
-        assert split_path_value("C:\\a;C:\\b") == ["C:\\a", "C:\\b"]
+    def test_split_platform_none_uses_host_dialect(self):
+        # platform=None means the RUNNING host's dialect: ';' on a
+        # Windows host, ':' on POSIX.
+        if os.name == "nt":
+            assert split_path_value("C:\\a;C:\\b") == ["C:\\a", "C:\\b"]
+        else:
+            assert split_path_value("/a:/b") == ["/a", "/b"]
 
-    def test_append_platform_none_windows_host(self):
-        assert append_path_value("C:\\one", "C:\\two") == "C:\\one;C:\\two"
+    def test_append_platform_none_uses_host_dialect(self):
+        if os.name == "nt":
+            assert append_path_value("C:\\one", "C:\\two") == \
+                "C:\\one;C:\\two"
+        else:
+            assert append_path_value("/one", "/two") == "/one:/two"
 
 
 class TestMixedSeparatorsWithinOneEntry:
