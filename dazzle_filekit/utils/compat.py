@@ -307,7 +307,10 @@ def resolve_cross_platform_path(path: Union[str, Path]) -> Path:
 
     if is_windows():
         # Try WSL /mnt/c/ -> C:\ (in case normalization didn't catch it)
-        wsl_match = re.match(r'^/mnt/([a-zA-Z])(/.*)?$', str(path))
+        # Single-sourced pattern (v0.3.3, stack-survey B1): shared with
+        # paths._prepare_path_format instead of an inline duplicate.
+        from ..paths import _WSL_MNT_RE
+        wsl_match = _WSL_MNT_RE.match(str(path))
         if wsl_match:
             drive = wsl_match.group(1).upper()
             rest = (wsl_match.group(2) or '').replace('/', '\\')
@@ -317,7 +320,10 @@ def resolve_cross_platform_path(path: Union[str, Path]) -> Path:
 
         # Check for MSYS-mangled WSL paths
         # Git Bash converts /mnt/c/... to C:\Program Files\Git\mnt\c\...
-        mangled = re.search(r'[/\\]mnt[/\\]([a-zA-Z])[/\\](.*)', path_str)
+        # Single-sourced (v0.3.3): this exact pattern previously existed
+        # inline here AND in dazzlecmd's fixpath tool, byte-identical.
+        from ..paths import _MANGLED_MNT_RE
+        mangled = _MANGLED_MNT_RE.search(path_str)
         if mangled:
             drive = mangled.group(1).upper()
             rest = mangled.group(2).replace('/', '\\')
@@ -327,6 +333,10 @@ def resolve_cross_platform_path(path: Union[str, Path]) -> Path:
 
     else:
         # On Linux/macOS: try Windows path -> WSL or MSYS format
+        # Deliberately NOT swapped for paths._WIN_DRIVE_RE: that pattern
+        # anchors with a trailing `$`, this one does not -- equivalent for
+        # normal paths but not for pathological embedded-newline input.
+        # Additive-only release: behavior preserved bit-for-bit.
         win_match = re.match(r'^([a-zA-Z]):[/\\](.*)', path_str)
         if win_match:
             drive = win_match.group(1).lower()

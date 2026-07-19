@@ -3,6 +3,14 @@ Path handling and normalization utilities.
 
 This module provides functions for path manipulation, normalization, and transformation
 across different platforms, focusing on preserving path information when copying files.
+
+Philosophy note: the normalizers here are HOST-directional -- they
+convert portable path formats toward the RUNNING OS's native form
+(``/mnt/c/...`` becomes ``C:\\...`` on Windows and vice versa). For
+strings whose platform semantics are fixed by PROVENANCE instead -- a
+PATH environment value from a Windows registry key stays
+``;``-separated and case-insensitive no matter which host parses it --
+use the declared-platform helpers in :mod:`dazzle_filekit.pathenv`.
 """
 
 import os
@@ -23,6 +31,12 @@ _MSYS_DRIVE_RE = re.compile(r"^/([a-zA-Z])(/.*)?$")
 _WSL_MNT_RE = re.compile(r"^/mnt/([a-zA-Z])(/.*)?$")
 # Windows drive-letter pattern: C:\..., C:/..., c:..., etc.
 _WIN_DRIVE_RE = re.compile(r"^([a-zA-Z]):[\\/](.*)$")
+# MSYS-mangled WSL pattern: Git Bash rewrites /mnt/c/... to
+# <git-root>\mnt\c\... -- match the embedded mnt segment anywhere.
+# Single-sourced here (v0.3.3) so utils/compat.py's existence-probing
+# resolver and this module share ONE spelling; previously compat.py
+# carried an inline byte-identical copy (dazzlecmd stack-survey B1).
+_MANGLED_MNT_RE = re.compile(r"[/\\]mnt[/\\]([a-zA-Z])[/\\](.*)")
 
 
 def _prepare_path_format(path_str: str) -> str:

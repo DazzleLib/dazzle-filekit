@@ -124,7 +124,20 @@ from .links import (
     remove_link,
 )
 
-__version__ = '0.3.2'
+# v0.3.3 declared-platform PATH-value helpers (dazzlecmd#103 homing) --
+# the provenance-typed sibling of the host-directional normalizers.
+from . import pathenv  # noqa: F401
+from .pathenv import (
+    PLATFORM_WINDOWS,
+    PLATFORM_POSIX,
+    host_path_platform,
+    split_path_value,
+    normalize_path_entry,
+    path_value_contains,
+    append_path_value,
+)
+
+__version__ = '0.3.3'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -264,6 +277,16 @@ __all__ = [
     'create_junction',
     'create_hardlink',
     'remove_link',
+
+    # Declared-platform PATH-value helpers (v0.3.3)
+    'pathenv',
+    'PLATFORM_WINDOWS',
+    'PLATFORM_POSIX',
+    'host_path_platform',
+    'split_path_value',
+    'normalize_path_entry',
+    'path_value_contains',
+    'append_path_value',
 
     # Verification functions
     'calculate_file_hash',

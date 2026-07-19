@@ -69,6 +69,15 @@ TOP_LEVEL_LOCKED = [
     "remove_link",
     "compute_relative_path",
     "links",  # the submodule
+    # v0.3.3 additions (declared-platform PATH-value helpers, dazzlecmd#103)
+    "pathenv",  # the submodule
+    "PLATFORM_WINDOWS",
+    "PLATFORM_POSIX",
+    "host_path_platform",
+    "split_path_value",
+    "normalize_path_entry",
+    "path_value_contains",
+    "append_path_value",
 ]
 
 

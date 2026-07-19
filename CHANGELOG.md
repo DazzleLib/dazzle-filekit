@@ -5,9 +5,19 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.3] - 2026-07-03
+## [0.3.3] - 2026-07-19
 
-`atomic_write_text` (and therefore `atomic_write_json`) absorbs transient Windows `PermissionError [WinError 5]` on the final `os.replace` with a bounded retry (6 attempts, 10-160ms backoff, ~0.3s worst case). Antivirus/indexer processes briefly lock freshly-written files; the first rename can fail even though no cooperating process holds the file -- observed in the wild as one random victim test per dazzlecmd full-suite run (`tmp.config.json -> config.json`). A persistent permission problem still raises.
+Additive-only release: no symbol removed, renamed, or behavior-changed. The one internal refactor (regex single-sourcing) is verified bit-identical; the deliberately-NOT-unified pattern is documented in place.
+
+### Added
+- `pathenv` module -- declared-platform PATH-environment-value helpers (`split_path_value`, `normalize_path_entry`, `path_value_contains`, `append_path_value`, `host_path_platform`, `PLATFORM_WINDOWS`/`PLATFORM_POSIX`), homed from dazzlecmd-lib's self-setup work (dazzlecmd#103). A PATH *value*'s platform semantics are fixed by its provenance, not the parsing host: a Windows registry `Path` value stays `;`-separated, `%VAR%`-bearing (expanded via `ntpath` identically on any host), and case-insensitive even on a POSIX CI runner. This is the deliberate mirror of `normalize_cross_platform_path`'s host-directional philosophy -- both module docstrings cross-reference the distinction. Pure string logic, no I/O; persistence stays with callers.
+- `paths._MANGLED_MNT_RE` -- the MSYS-mangled WSL pattern promoted to a shared module constant.
+
+### Changed
+- Internal only (stack-survey B1 seam): `utils/compat.resolve_cross_platform_path` now uses the shared `paths._WSL_MNT_RE` / `paths._MANGLED_MNT_RE` constants instead of inline byte-identical copies. The third inline pattern (windows drive-letter) is deliberately NOT swapped -- the shared constant anchors with a trailing `$`, the inline one does not (equivalent except for pathological embedded-newline input), and this release preserves behavior bit-for-bit; the comment at the site records the nuance.
+
+### Fixed
+- `atomic_write_text` (and therefore `atomic_write_json`) absorbs transient Windows `PermissionError [WinError 5]` on the final `os.replace` with a bounded retry (6 attempts, 10-160ms backoff, ~0.3s worst case). Antivirus/indexer processes briefly lock freshly-written files; the first rename can fail even though no cooperating process holds the file -- observed in the wild as one random victim test per dazzlecmd full-suite run (`tmp.config.json -> config.json`). A persistent permission problem still raises.
 
 ## [0.3.2] - 2026-06-22
 

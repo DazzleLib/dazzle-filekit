@@ -78,6 +78,22 @@ Restored from unctools' 0.2.0 split (STACK-MAP D7), as the Option D resolver edg
 
 **Dependency change (0.3.0):** `dazzle-lib>=0.2.0` and `unctools>=0.2.2` are now required (the `PathVariantResolver` seam + the V9 drive-map fold); the optional `[unctools]` extra is removed.
 
+### v0.3.3 additions (locked as of v0.3.3)
+
+Declared-platform PATH-environment-value helpers (`pathenv` module) --
+homed from dazzlecmd-lib's self-setup work (dazzlecmd#103). Pure string
+logic; the `platform` keyword is `"windows"` / `"posix"` / `None` (host).
+
+| Symbol | Description |
+|--------|-------------|
+| `pathenv` (submodule) | The declared-platform PATH-value domain module |
+| `PLATFORM_WINDOWS`, `PLATFORM_POSIX` | Platform tokens for the `platform=` keyword |
+| `host_path_platform()` | The running host's PATH dialect |
+| `split_path_value(value, platform=None)` | Split on the DECLARED platform's separator (`;` / `:`), never `os.pathsep` |
+| `normalize_path_entry(entry, platform=None)` | Identity-normalize one entry (quotes, `%VAR%` via ntpath on any host, separators, trailing, casefold-on-windows) |
+| `path_value_contains(value, directory, platform=None)` | Normalized membership |
+| `append_path_value(value, directory, platform=None)` | Pure string append; no-op when present under normalized identity |
+
 ### v0.2.4 additions (locked as of v0.2.4)
 
 | Symbol | Description |
