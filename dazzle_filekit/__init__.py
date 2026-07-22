@@ -120,6 +120,7 @@ from .links import (
     detect_link_type,
     read_link_target,
     create_junction,
+    create_junction_raw,
     create_hardlink,
     remove_link,
 )
@@ -137,7 +138,7 @@ from .pathenv import (
     append_path_value,
 )
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -275,6 +276,7 @@ __all__ = [
     'detect_link_type',
     'read_link_target',
     'create_junction',
+    'create_junction_raw',
     'create_hardlink',
     'remove_link',
 

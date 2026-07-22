@@ -5,6 +5,14 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-07-22
+
+### Fixed
+- `apply_file_metadata` corrupted a **junction target directory's** timestamps instead of the junction's -- the same follow-the-reparse-point bug class fixed for symlinks in 0.3.1, unfixed for junctions because the gate used `Path.is_symlink()` (False for IO_REPARSE_TAG_MOUNT_POINT). Link routing now uses `_is_link_node()`, which treats any reparse point (symlink or junction) as a link node. Surfaced by the linkmirror engine work (mirroring all NTFS links from a failing drive; DazzleTools/preserve#48 Phase 2 scope).
+- `restore_windows_creation_time` opened BROKEN directory links without `FILE_FLAG_BACKUP_SEMANTICS`: dir-ness was probed with `is_dir()`, which follows the reparse point and reports False when the target is missing. Link nodes now decide dir-ness from `os.lstat` attributes.
+- `create_symlink` auto-detection of `target_is_directory` probed relative targets against the process CWD instead of the link's parent directory. Note: a BROKEN target still probes False -- callers recreating an existing link (mirroring) must pass `target_is_directory` explicitly from the source link's own kind.
+- `create_symlink` laundered the target through `Path()`, normalizing segments (`a\.\b` -> `a\b`, `/` -> `\`) before storing. The raw caller string is now passed through verbatim on every creation method, so `os.readlink` round-trips byte-identically (measured: relative targets store verbatim; absolute targets are canonicalized to `\\?\` form by the kernel regardless of API -- see `tests/one-offs/probe_symlink_target_fidelity.py`).
+
 ## [0.3.3] - 2026-07-19
 
 Additive-only release: no symbol removed, renamed, or behavior-changed. The one internal refactor (regex single-sourcing) is verified bit-identical; the deliberately-NOT-unified pattern is documented in place.

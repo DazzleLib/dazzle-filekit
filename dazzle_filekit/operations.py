@@ -958,6 +958,11 @@ def create_symlink(
         >>> create_symlink('C:\\data\\folder', 'C:\\links\\folder_link', target_is_directory=True)
         True
     """
+    # Keep the caller's raw target string for creation: Path() round-trips
+    # normalize segments (``a\.\b`` -> ``a\b``, ``/`` -> ``\\``), but a link's
+    # stored target must be able to reproduce the caller's bytes exactly
+    # (mirroring reads it back via os.readlink and expects equality).
+    raw_target = os.fspath(target)
     target_path = Path(target)
     link_path = Path(link)
 
@@ -983,26 +988,34 @@ def create_symlink(
         logger.error(f"Failed to create parent directories for {link_path}: {e}")
         return False
 
-    # Auto-detect if target is a directory
+    # Auto-detect if target is a directory. Relative targets resolve against
+    # the LINK's parent directory (link semantics), not the process CWD. A
+    # broken target probes False -- callers recreating an existing link (e.g.
+    # mirroring) must pass target_is_directory explicitly from the source
+    # link's own kind, since a broken DIRECTORY symlink cannot be inferred.
     if target_is_directory is None:
-        target_is_directory = target_path.is_dir()
+        probe = (target_path if target_path.is_absolute()
+                 else link_path.parent / raw_target)
+        target_is_directory = probe.is_dir()
 
     # Try to create symlink
     if platform.system() != 'Windows':
         # Unix: straightforward symlink
         try:
-            os.symlink(target_path, link_path)
-            logger.debug(f"Created symlink: {link_path} -> {target_path}")
+            os.symlink(raw_target, str(link_path))
+            logger.debug(f"Created symlink: {link_path} -> {raw_target}")
             return True
         except Exception as e:
             logger.error(f"Failed to create symlink on Unix: {e}")
             return False
 
     # Windows: try multiple methods
-    return _create_windows_symlink(target_path, link_path, target_is_directory)
+    return _create_windows_symlink(raw_target, link_path, target_is_directory)
 
 
-def _create_windows_symlink(target: Path, link: Path, is_directory: bool) -> bool:
+def _create_windows_symlink(
+    target: Union[str, Path], link: Path, is_directory: bool
+) -> bool:
     """
     Create a symbolic link on Windows using an escalating chain of methods.
 
@@ -1021,14 +1034,15 @@ def _create_windows_symlink(target: Path, link: Path, is_directory: bool) -> boo
     returns False (dazzlelink raised).
 
     Args:
-        target: Target path
+        target: Target path. Passed through VERBATIM (no Path normalization)
+            so the stored reparse target reproduces the caller's bytes.
         link: Link path to create
         is_directory: Whether target is a directory
 
     Returns:
         True if successful, False otherwise
     """
-    target_str = str(target)
+    target_str = os.fspath(target)
     link_str = str(link)
 
     # Method 1: os.symlink (Developer Mode enabled)

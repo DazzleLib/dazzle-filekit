@@ -194,8 +194,93 @@ def _collect_windows_metadata(path: Path) -> Dict[str, Any]:
         logger.error(f"Error collecting Windows metadata for {path}: {e}")
         return windows_metadata
 
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+# Nanoseconds between 1601-01-01 (FILETIME epoch) and 1970-01-01 (Unix epoch)
+_FILETIME_EPOCH_OFFSET_NS = 11644473600 * 10**9
+
+
+def _set_link_times_exact_windows(
+    path_str: str,
+    created_ns: Optional[int],
+    accessed_ns: Optional[int],
+    modified_ns: Optional[int],
+) -> bool:
+    """Set timestamps on a link node with exact 100ns precision.
+
+    Opens the node with ``FILE_FLAG_OPEN_REPARSE_POINT`` (never follows to
+    the target) and calls ``SetFileTime`` with FILETIMEs computed directly
+    from integer nanoseconds -- the float/datetime/pywintypes chain rounds
+    to microseconds or worse, which a mirror's verify pass would flag.
+    Pure ctypes; works without pywin32. Returns True on success.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+
+        FILE_WRITE_ATTRIBUTES = 0x100
+        OPEN_EXISTING = 3
+        FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+        FILE_SHARE_ALL = 0x01 | 0x02 | 0x04
+
+        def _ft(ns: Optional[int]):
+            if ns is None:
+                return None
+            ticks = (ns + _FILETIME_EPOCH_OFFSET_NS) // 100
+            return wintypes.FILETIME(
+                ticks & 0xFFFFFFFF, (ticks >> 32) & 0xFFFFFFFF
+            )
+
+        handle = kernel32.CreateFileW(
+            path_str, FILE_WRITE_ATTRIBUTES, FILE_SHARE_ALL, None,
+            OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        if handle == wintypes.HANDLE(-1).value:
+            return False
+        try:
+            ft_c = _ft(created_ns)
+            ft_a = _ft(accessed_ns)
+            ft_m = _ft(modified_ns)
+            ok = kernel32.SetFileTime(
+                handle,
+                ctypes.byref(ft_c) if ft_c else None,
+                ctypes.byref(ft_a) if ft_a else None,
+                ctypes.byref(ft_m) if ft_m else None,
+            )
+            return bool(ok)
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception as e:  # noqa: BLE001 - caller falls back to pywin32
+        logger.debug(f"_set_link_times_exact_windows({path_str}) failed: {e}")
+        return False
+
+
+def _is_link_node(path_obj: Path) -> bool:
+    """True for any link NODE whose own metadata must be set without
+    following to the target: symlinks everywhere, plus junctions (and any
+    other reparse point) on Windows. ``Path.is_symlink()`` alone is False for
+    junctions (IO_REPARSE_TAG_MOUNT_POINT vs IO_REPARSE_TAG_SYMLINK), which
+    routed junctions to the target-following ``os.utime`` path before v0.3.4.
+    """
+    if path_obj.is_symlink():
+        return True
+    if platform.system() != 'Windows':
+        return False
+    try:
+        attrs = os.lstat(str(path_obj)).st_file_attributes
+    except OSError:
+        return False
+    return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
 def _set_symlink_timestamps(path_obj: Path, timestamps: Dict[str, Any]) -> bool:
-    """Apply timestamps to a symlink ITSELF, never the target it points to.
+    """Apply timestamps to a link node ITSELF (symlink or junction), never
+    the target it points to.
 
     ``os.utime()`` and a default Win32 ``CreateFile`` both follow the reparse
     point to the target -- so applying timestamps to a link the naive way
@@ -208,21 +293,57 @@ def _set_symlink_timestamps(path_obj: Path, timestamps: Dict[str, Any]) -> bool:
     accessed = timestamps.get('accessed')
     modified = timestamps.get('modified')
     created = timestamps.get('created')
+    # Optional exact-precision variants: integer nanoseconds. The float-
+    # seconds path bottoms out in datetime/pywintypes at microsecond (or
+    # worse) resolution; mirroring wants the NTFS 100ns tick preserved, so
+    # *_ns keys, when present, take precedence and travel through an exact
+    # integer FILETIME conversion.
+    accessed_ns = timestamps.get('accessed_ns')
+    modified_ns = timestamps.get('modified_ns')
+    created_ns = timestamps.get('created_ns')
 
     if platform.system() != 'Windows':
-        if (os.utime in os.supports_follow_symlinks
-                and accessed is not None and modified is not None):
-            try:
+        if os.utime not in os.supports_follow_symlinks:
+            logger.warning(
+                f"Cannot set link timestamps for {path_obj} on this platform "
+                f"without following to the target; skipped."
+            )
+            return False
+        try:
+            if accessed_ns is not None and modified_ns is not None:
+                os.utime(path_obj, ns=(accessed_ns, modified_ns),
+                         follow_symlinks=False)
+                return True
+            if accessed is not None and modified is not None:
                 os.utime(path_obj, (accessed, modified), follow_symlinks=False)
                 return True
-            except Exception as e:
-                logger.warning(f"Error applying symlink timestamps to {path_obj}: {e}")
-                return False
+        except Exception as e:
+            logger.warning(f"Error applying symlink timestamps to {path_obj}: {e}")
+            return False
         logger.warning(
-            f"Cannot set link timestamps for {path_obj} on this platform without "
-            f"following to the target; skipped."
+            f"Cannot set link timestamps for {path_obj}: no usable "
+            f"accessed/modified values; skipped."
         )
         return False
+
+    # Windows exact path: integer ns -> FILETIME (100ns ticks since 1601)
+    # via ctypes SetFileTime. No float/datetime rounding, no pywin32 needed.
+    if any(v is not None for v in (created_ns, accessed_ns, modified_ns)):
+        if _set_link_times_exact_windows(
+            str(path_obj), created_ns, accessed_ns, modified_ns
+        ):
+            return True
+        logger.debug(
+            f"Exact ns SetFileTime failed for {path_obj}; falling back to "
+            f"pywin32 float path"
+        )
+        # Fall through to the float path with whatever float values exist.
+        if accessed is None and accessed_ns is not None:
+            accessed = accessed_ns / 1e9
+        if modified is None and modified_ns is not None:
+            modified = modified_ns / 1e9
+        if created is None and created_ns is not None:
+            created = created_ns / 1e9
 
     # Windows: open the link itself (FILE_FLAG_OPEN_REPARSE_POINT) + SetFileTime.
     if not is_win32_available():
@@ -289,13 +410,13 @@ def apply_file_metadata(path: Union[str, Path], metadata: FileMetadataDict) -> b
                 logger.warning(f"Error applying permissions to {path}: {e}")
                 success = False
 
-        # Apply timestamps. Symlinks need special handling: os.utime() and the
-        # default Win32 handle follow the reparse point and would write to the
-        # TARGET, so route links through a link-targeting helper that sets all
-        # three times on the link itself.
+        # Apply timestamps. Link nodes (symlinks AND junctions) need special
+        # handling: os.utime() and the default Win32 handle follow the reparse
+        # point and would write to the TARGET, so route them through a
+        # link-targeting helper that sets all three times on the node itself.
         if 'timestamps' in metadata:
             timestamps = metadata['timestamps']
-            if path_obj.is_symlink():
+            if _is_link_node(path_obj):
                 if not _set_symlink_timestamps(path_obj, timestamps):
                     success = False
             else:
@@ -932,15 +1053,26 @@ def restore_windows_creation_time(
         # Raw value for FILE_WRITE_ATTRIBUTES (0x100) -- not always in win32con
         FILE_WRITE_ATTRIBUTES = 0x100
 
-        # Directories require FILE_FLAG_BACKUP_SEMANTICS to open
-        if path_obj.is_dir():
+        # Directories require FILE_FLAG_BACKUP_SEMANTICS to open. For link
+        # nodes (symlink/junction) decide dir-ness from lstat attributes --
+        # is_dir() follows the reparse point and reports False for a BROKEN
+        # directory link, whose handle still needs BACKUP_SEMANTICS.
+        if _is_link_node(path_obj):
+            try:
+                node_attrs = os.lstat(path_str).st_file_attributes
+            except OSError:
+                node_attrs = 0
+            if node_attrs & stat.FILE_ATTRIBUTE_DIRECTORY:
+                flags = win32con.FILE_FLAG_BACKUP_SEMANTICS
+            else:
+                flags = win32con.FILE_ATTRIBUTE_NORMAL
+            # Open the link itself, not the target it points to, so the
+            # creation time lands on the link (otherwise CreateFile follows it).
+            flags |= 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
+        elif path_obj.is_dir():
             flags = win32con.FILE_FLAG_BACKUP_SEMANTICS
         else:
             flags = win32con.FILE_ATTRIBUTE_NORMAL
-        # Symlinks: open the link itself, not the target it points to, so the
-        # creation time lands on the link (otherwise CreateFile follows it).
-        if path_obj.is_symlink():
-            flags |= 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
 
         # Handle readonly files: clear attribute, set time, restore attribute
         readonly_cleared = False

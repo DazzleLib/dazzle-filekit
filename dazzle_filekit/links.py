@@ -286,6 +286,126 @@ def create_junction(
         return False
 
 
+def create_junction_raw(
+    target: Union[str, Path],
+    link: Union[str, Path],
+    force: bool = False,
+) -> bool:
+    """Create an NTFS junction by writing the mount-point reparse buffer
+    directly (``FSCTL_SET_REPARSE_POINT``), no subprocess.
+
+    Differences from :func:`create_junction` (PowerShell ``New-Item``):
+
+    - The target does NOT need to exist -- ``New-Item`` refuses a missing
+      target, which makes intentionally-broken junctions impossible to
+      recreate when mirroring a tree.
+    - The target string is stored VERBATIM: ``\\\\?\\C:\\x`` (as returned by
+      ``os.readlink`` on another junction) and plain ``C:\\x`` are both
+      accepted; the NT-namespace SubstituteName (``\\??\\...``) and the
+      user-facing PrintName are derived without other normalization, so
+      ``os.readlink`` round-trips byte-identically.
+
+    Unprivileged (junctions never require SeCreateSymbolicLinkPrivilege).
+    Windows-only, directory-only. Returns True on success.
+    """
+    raw_target = os.fspath(target)
+    link_path = Path(link)
+
+    if os.name != "nt":
+        logger.error("Junctions are only supported on Windows")
+        return False
+
+    if link_path.exists() or link_path.is_symlink():
+        if not force:
+            logger.warning(f"Link path already exists: {link_path}")
+            return False
+        if not _remove_existing(link_path):
+            return False
+
+    # SubstituteName lives in the NT namespace (\??\); PrintName is the
+    # user-facing form. os.readlink() renders \??\ as \\?\, so accept both.
+    if raw_target.startswith("\\??\\"):
+        substitute = raw_target
+        print_name = raw_target[4:]
+    elif raw_target.startswith("\\\\?\\"):
+        substitute = "\\??\\" + raw_target[4:]
+        print_name = raw_target[4:]
+    else:
+        substitute = "\\??\\" + raw_target
+        print_name = raw_target
+
+    try:
+        link_path.parent.mkdir(parents=True, exist_ok=True)
+        os.mkdir(link_path)
+    except OSError as e:
+        logger.error(f"Failed to create junction directory {link_path}: {e}")
+        return False
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+
+        GENERIC_WRITE = 0x40000000
+        OPEN_EXISTING = 3
+        FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+        FILE_SHARE_READ_WRITE_DELETE = 0x01 | 0x02 | 0x04
+        FSCTL_SET_REPARSE_POINT = 0x000900A4
+        IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+
+        subst_b = substitute.encode("utf-16-le")
+        print_b = print_name.encode("utf-16-le")
+        # MountPointReparseBuffer: 4 offset/length WORDs + PathBuffer holding
+        # SubstituteName \0 PrintName \0 (UTF-16LE, lengths exclude the NULs).
+        path_buffer = subst_b + b"\x00\x00" + print_b + b"\x00\x00"
+        reparse_data_length = 8 + len(path_buffer)
+        header = (
+            IO_REPARSE_TAG_MOUNT_POINT.to_bytes(4, "little")
+            + reparse_data_length.to_bytes(2, "little")
+            + b"\x00\x00"  # Reserved
+            + (0).to_bytes(2, "little")  # SubstituteNameOffset
+            + len(subst_b).to_bytes(2, "little")  # SubstituteNameLength
+            + (len(subst_b) + 2).to_bytes(2, "little")  # PrintNameOffset
+            + len(print_b).to_bytes(2, "little")  # PrintNameLength
+        )
+        buf = header + path_buffer
+
+        handle = kernel32.CreateFileW(
+            str(link_path), GENERIC_WRITE,
+            FILE_SHARE_READ_WRITE_DELETE,
+            None, OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+            None,
+        )
+        if handle == wintypes.HANDLE(-1).value:
+            raise OSError(f"CreateFileW failed for {link_path}")
+        try:
+            bytes_returned = wintypes.DWORD(0)
+            ok = kernel32.DeviceIoControl(
+                handle, FSCTL_SET_REPARSE_POINT,
+                buf, len(buf), None, 0,
+                ctypes.byref(bytes_returned), None,
+            )
+            if not ok:
+                raise OSError(
+                    f"FSCTL_SET_REPARSE_POINT failed "
+                    f"(winerror={ctypes.get_last_error()})"
+                )
+        finally:
+            kernel32.CloseHandle(handle)
+        logger.debug(f"Created raw junction: {link_path} -> {raw_target}")
+        return True
+    except Exception as e:  # noqa: BLE001 - report and clean up the stub dir
+        logger.error(f"Raw junction creation failed for {link_path}: {e}")
+        try:
+            os.rmdir(link_path)
+        except OSError:
+            pass
+        return False
+
+
 def create_hardlink(
     target: Union[str, Path],
     link: Union[str, Path],
