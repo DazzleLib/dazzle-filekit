@@ -5,6 +5,21 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-30
+
+Additive-only release: no symbol removed, renamed, or behavior-changed. Bumped to a minor rather than a patch not for API surface but for *risk class* -- unlike `pathenv` (0.3.3, pure string logic, no I/O), this release introduces a module that **creates and deletes filesystem objects**. A consumer upgrading a patch release should not discover that it can mint reparse points on their system drive.
+
+### Added
+- `longpath` module -- the **remedy** for the condition `utils.validation.is_valid_path` has always merely *detected* (a path over `MAX_PATH` lacking a `\\?\` prefix). `\\?\` lifts the limit at the Win32 API layer, which suffices for a well-behaved caller; it does **not** help an application that builds the correct extended path and then copies it into a fixed 260-byte buffer, truncating the tail and reporting the file missing. That was observed in the wild in two independent PDF readers, and nothing outside such an application can repair its internal buffer. What *can* be changed is the length of the string handed to it -- so `longpath` places a directory junction at a short root, giving the same bytes a shorter name with no cooperation required from the consumer.
+- `needs_shim(path, threshold=240)` -- the trigger. Returns `False` on POSIX (`PATH_MAX` is 4096 on Linux, 1024 on macOS/BSD, so the condition does not arise) and `False` for a path already carrying an extended-length prefix. The 240 default sits deliberately below the 259 usable maximum: some handlers append to the path they are given, so a path that merely *fits* can still overflow once the consumer touches it.
+- `plan_shim(path, root, threshold, id_len)` -> `ShimPlan` -- pure decision, no filesystem writes. Selects the **shallowest** ancestor whose junction still brings the result under `USABLE_PATH`, so one shim covers the widest subtree and repeat opens reuse it; where the filename is long enough that only its immediate parent fits, that is chosen instead. A component longer than `NAME_MAX` (255) is reported in `plan.reason` rather than faked -- no link can shorten a single path component, because the offending name must still appear in the shimmed path.
+- `resolve_shim_root` / `candidate_roots` / `budget_for` -- root selection, shortest writable first, probed at runtime. Root length is subtracted from the filename's budget, so the ordering is load-bearing rather than cosmetic: a 49-character root leaves a 244-character filename needing 294 characters and still broken, where a 7-character root does not. `%USERPROFILE%` is included as the one tier guaranteed writable but deliberately ranked below the drive roots, because its length varies with the username -- the same code would serve every file on one machine and silently drop the longest on another.
+- `create_shim` / `remove_shim` / `reap_shims` -- shim lifecycle. `remove_shim` **re-verifies that its target is a junction immediately before deleting**, closing the check-then-act window rather than trusting an earlier scan, and uses `os.rmdir`, which unlinks the reparse point without descending into it. This is not theoretical caution: every naive test misidentifies a junction (`os.path.islink()` False, `os.path.isdir()` True, `DirEntry.is_symlink()` False), the same class of bug 0.3.1 and 0.3.4 fixed in `apply_file_metadata`. `reap_shims` considers only junctions and leaves anything else in the directory alone.
+- `shim_path(path, root, threshold)` -- convenience wrapper that never leaves a caller worse off than if this module did not exist: an unnecessary shim, an impossible plan, an unwritable root, or a failed junction all fall back to the original path rather than raising.
+
+### Fixed
+- `setup.py` carried `version="0.3.3"`, two releases behind `pyproject.toml`. All three version locations (`setup.py`, `pyproject.toml`, `__init__.__version__`) now agree at 0.4.0.
+
 ## [0.3.4] - 2026-07-22
 
 ### Fixed

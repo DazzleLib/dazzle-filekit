@@ -26,6 +26,7 @@ A Python toolkit for reliable file operations across Windows, Linux, and macOS. 
 - **Platform Support** - Windows, Linux, and macOS with platform-specific optimizations
 - **UNC Path Detection** - Native `is_unc_path` / `classify_fs_object` helpers; built on [UNCtools](https://github.com/DazzleLib/UNCtools) (a hard dependency as of 0.3.0) for UNC ↔ drive-letter translation and the optional path-variant resolver edge (see [docs/unctools-integration.md](docs/unctools-integration.md))
 - **Link Primitives** - `analyze_link` / `create_junction` / `create_hardlink` / `read_link_target` (intrinsic link analysis; junctions via PowerShell, no `cmd`)
+- **Long-Path Shims** - `shim_path` makes a file over Windows' 260-character `MAX_PATH` openable by *any* application, by siting a junction at a short root and handing back a shorter name for the same bytes. `\\?\` only lifts the limit at the API layer; it does not help an app that copies the path into a fixed 260-byte buffer (observed in two PDF readers), and nothing outside such an app can fix its buffer. A no-op on Linux/macOS, where `PATH_MAX` is 4096/1024
 
 ## Why dazzle-filekit?
 
@@ -228,6 +229,7 @@ For the full function-by-function reference, see
 | **Verification** | `calculate_file_hash`, `verify_file_hash`, `verify_files_with_manifest`, `compare_directories` |
 | **UNC detection** | `is_unc_path`, `classify_fs_object` (UNCtools is the hard-dep L0 layer for translation + the resolver edge -- see [docs/unctools-integration.md](docs/unctools-integration.md)) |
 | **Link primitives** | `analyze_link`, `detect_link_type`, `read_link_target`, `create_junction`, `create_hardlink` |
+| **Long paths** | `dazzle_filekit.longpath` -- `shim_path` (one-call), `needs_shim`, `plan_shim`, `resolve_shim_root`, `budget_for`, `create_shim`, `remove_shim`, `reap_shims` |
 
 ## Platform Support
 

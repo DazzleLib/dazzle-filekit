@@ -138,7 +138,29 @@ from .pathenv import (
     append_path_value,
 )
 
-__version__ = '0.3.4'
+# v0.4.0 long-path shims -- the remedy for the condition
+# utils.validation.is_valid_path already detects (paths over MAX_PATH without a
+# \\?\ prefix). Windows-only in effect; a no-op elsewhere.
+from . import longpath  # noqa: F401
+from .longpath import (
+    MAX_PATH,
+    USABLE_PATH,
+    DEFAULT_THRESHOLD,
+    NAME_MAX,
+    SHIM_DIR_NAME,
+    ShimPlan,
+    needs_shim,
+    candidate_roots,
+    resolve_shim_root,
+    budget_for,
+    plan_shim,
+    create_shim,
+    remove_shim,
+    reap_shims,
+    shim_path,
+)
+
+__version__ = '0.4.0'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -300,5 +322,22 @@ __all__ = [
     'save_hashes_to_file',
     'load_hashes_from_file',
     'compare_directories',
-    'verify_copied_files'
+    'verify_copied_files',
+
+    # long-path shims (v0.4.0)
+    'MAX_PATH',
+    'USABLE_PATH',
+    'DEFAULT_THRESHOLD',
+    'NAME_MAX',
+    'SHIM_DIR_NAME',
+    'ShimPlan',
+    'needs_shim',
+    'candidate_roots',
+    'resolve_shim_root',
+    'budget_for',
+    'plan_shim',
+    'create_shim',
+    'remove_shim',
+    'reap_shims',
+    'shim_path',
 ]
