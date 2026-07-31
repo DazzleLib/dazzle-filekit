@@ -151,3 +151,6 @@ revisions/
 test_runs/
 private/claude/
 private/temp/
+
+# Sphinx documentation build output (regenerated; never committed)
+docs/_build/

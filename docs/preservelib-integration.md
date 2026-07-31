@@ -20,18 +20,24 @@ from filekit's side so the two can evolve together.
 
 ## The layering contract
 
+```mermaid
+flowchart TD
+    TOOL["<b>Downstream tool</b><br/><i>dz safedel · ghtraf · preserve CLI · …</i>"]
+    PRESERVE["<b>preservelib</b> — workflow<br/><i>manifests · conflict policy · rollback</i><br/>“do MANY things as a transaction”"]
+    FILEKIT["<b>dazzle_filekit</b> — primitives<br/><i>copy · hash · metadata · links · long paths</i><br/>“do ONE thing to ONE object, correctly”"]
+
+    TOOL --> PRESERVE
+    TOOL --> FILEKIT
+    PRESERVE --> FILEKIT
+
+    classDef prim fill:#2563eb,stroke:#1e40af,color:#fff
+    class FILEKIT prim
 ```
-+--------------------------------------------------------+
-|                 Downstream tool                        |
-|  (safedel, ghtraf, preservelib CLI, ...)               |
-+--------------------------------------------------------+
-         |                          |
-         v                          v
-+---------------------+    +---------------------+
-|   preservelib       |    |   dazzle_filekit    |
-|   (workflow layer)  |--->|   (primitives)      |
-+---------------------+    +---------------------+
-```
+
+The dependency runs **one way only**: preservelib imports filekit, never the
+reverse. A tool may reach past preservelib straight to filekit when it only
+needs a primitive — that is the second arrow, and it is deliberate, not a
+layering violation.
 
 - **`dazzle_filekit`** is the *primitives* layer. Its functions operate on
   individual files/paths and return data. They never drive a workflow.
@@ -156,15 +162,29 @@ In your downstream tool's `pyproject.toml` or `requirements.txt`:
 
 ```toml
 dependencies = [
-    "dazzle-filekit>=0.3.0,<0.4",  # metadata module + link primitives
+    "dazzle-filekit>=0.4.0,<0.5",  # metadata, link primitives, long-path shims
     "preservelib>=0.X.Y",            # for workflow orchestration
 ]
 ```
 
-Pin to `>=0.3.0,<0.4`: 0.3.0 was a clean break (it removed
-`normalize_path` / `normalize_path_no_resolve` / `get_path_type` and folded
-`get_drive_mappings` into unctools). A future 0.4.0 may break again, so cap the
-upper bound at the next minor.
+**Updated for 0.4.x.** This section previously advised `>=0.3.0,<0.4` on the
+reasoning that "a future 0.4.0 may break again". That prediction did not hold:
+**0.4.0 was additive-only** — no symbol removed, renamed, or behaviour-changed.
+It went to a minor rather than a patch for *risk class*, not compatibility,
+because it introduced the first module that creates and deletes filesystem
+objects (`longpath`), and a consumer taking a patch bump should not discover it
+can mint reparse points on their system drive.
+
+So a `<0.4` cap now excludes every current release for no compatibility reason.
+Anything written against 0.3.x still works on 0.4.x unchanged.
+
+The remaining `<0.5` cap is ordinary caution rather than a known hazard: 0.3.0
+*was* a clean break (removing `normalize_path` / `normalize_path_no_resolve` /
+`get_path_type` and folding `get_drive_mappings` into unctools), so capping at
+the next minor is a reasonable default until a release proves otherwise.
+Consult [api-stability.md](api-stability.md) — every locked symbol lists the
+external callers depending on it, and breaking one requires a migration commit
+in each.
 
 ---
 

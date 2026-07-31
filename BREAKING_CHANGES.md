@@ -21,6 +21,63 @@ copies of `log-command.py` across `claude-session-logger/`. Do not repeat.
 
 ---
 
+## v0.4.0 – v0.4.2 (additive, no breaks)
+
+**Summary**: No names removed, no signatures tightened, no behaviour removed.
+Downstream tools need no changes.
+
+- **0.4.0** added the `longpath` module (Windows `MAX_PATH` shims via on-demand
+  junctions). It went to a **minor** rather than a patch for *risk class*, not
+  compatibility: it is the first module that creates and deletes filesystem
+  objects, and a consumer taking a patch bump should not discover it can mint
+  reparse points on their system drive. Nothing existing changed.
+- **0.4.1** was test- and guard-only: `@win_only` gating for POSIX CI legs, and
+  a widened exception guard in `shim_path`. No API change.
+- **0.4.2** added `is_device_path` / `POSIX_DEVICE_PATHS` /
+  `WINDOWS_INVALID_NAMES`, and **fixed** `is_valid_path` rejecting every
+  forward-slash path on Windows. That fix is a behaviour *correction*, not a
+  break — `C:/code/project` was previously reported invalid and now is not.
+  A caller relying on the old (wrong) rejection would be relying on a bug.
+
+**Pinning note.** `docs/preservelib-integration.md` previously advised
+`dazzle-filekit>=0.3.0,<0.4` on the reasoning that "a future 0.4.0 may break
+again". That prediction did not hold, and the cap now excludes every current
+release for no compatibility reason. Anything written against 0.3.x runs
+unchanged on 0.4.x.
+
+---
+
+## v0.3.0 (clean break — migrations required)
+
+**Summary**: 0.3.0 removed and renamed locked symbols **without deprecation
+shims**, and migrated every in-tree consumer in the same cycle. This was a
+deliberate exception to the rule at the top of this file: the rubric was
+coverage-completeness over backward-compatibility, and 0.3.0 had not shipped to
+PyPI when the changes landed, so no released contract broke mid-stream.
+
+If you are updating a downstream tool from 0.2.x, these are the migrations:
+
+| Removed / renamed | Replacement | Notes |
+|---|---|---|
+| `paths.normalize_path(p)` | `normalize_cross_platform_path(p, resolve=True)` | link-following behaviour |
+| `paths.normalize_path_no_resolve(p)` | `normalize_cross_platform_path(p)` | the default `resolve=False` is link-safe |
+| `paths.get_path_type(p)` | `paths.classify_fs_object(p)` | identical behaviour, clearer name |
+| `utils.compat.get_drive_mappings()` | `unctools.converter.get_mappings()` or `UNCConverter().get_reverse_mappings()` | folded into unctools ≥0.2.2 (stack V9); was never exported |
+
+**Behaviour change, not a removal:** `is_unc_path` became platform-independent
+— `//server/share` now returns `True` on every platform, where previously the
+forward-slash spelling was recognized only on some. This is a superset of the
+old behaviour, so no caller broke.
+
+**New required dependencies:** `dazzle-lib>=0.2.0` and `unctools>=0.2.2`. The
+optional `[unctools]` extra was removed. Note that unctools is *declared* but
+imported lazily — `import dazzle_filekit` still succeeds without it present.
+
+Full per-symbol detail, including which external tool imported each one, is in
+[`docs/api-stability.md`](https://github.com/DazzleLib/dazzle-filekit/blob/main/docs/api-stability.md).
+
+---
+
 ## v0.2.4 (additive consolidation, no breaks)
 
 **Summary**: Pure enrichment release. No names removed, no signatures

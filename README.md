@@ -1,8 +1,9 @@
 # dazzle-filekit
 
-[![Release Date](https://img.shields.io/github/release-date/DazzleLib/dazzle-filekit?color=green)](https://github.com/DazzleLib/dazzle-filekit/releases)
 [![PyPI](https://img.shields.io/pypi/v/dazzle-filekit?color=green)](https://pypi.org/project/dazzle-filekit/)
+[![Release Date](https://img.shields.io/github/release-date/DazzleLib/dazzle-filekit?color=green)](https://github.com/DazzleLib/dazzle-filekit/releases)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/dazzle-filekit?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pypistats.org/packages/dazzle-filekit)
+[![Docs](https://app.readthedocs.org/projects/dazzle-filekit/badge/?version=latest)](https://dazzle-filekit.readthedocs.io/)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![GitHub Discussions](https://img.shields.io/github/discussions/DazzleLib/dazzle-filekit)](https://github.com/DazzleLib/dazzle-filekit/discussions)
@@ -98,8 +99,11 @@ from dazzle_filekit import normalize_cross_platform_path, find_files, is_unc_pat
 path = normalize_cross_platform_path("/some/path/../file.txt")
 print(path)  # PosixPath('/some/file.txt') or WindowsPath('C:/some/file.txt')
 
-# Find files with patterns (returns list of path strings)
-files = find_files("/directory", patterns=["*.py", "*.txt"])
+# Find files with patterns. NOTE: search_paths is a LIST of directories.
+# Passing a bare string iterates it character by character -- and since
+# Path("/") is the drive root and recursive=True is the default, that would
+# attempt to walk the entire filesystem.
+files = find_files(["/directory"], patterns=["*.py", "*.txt"])   # -> list[Path]
 
 # Check UNC paths
 if is_unc_path(r"\\server\share"):
@@ -154,12 +158,21 @@ has_space, message = ensure_disk_space(
 ```python
 from dazzle_filekit import calculate_file_hash, verify_file_hash
 
-# Calculate hash
-hash_value = calculate_file_hash("file.txt", algorithm="sha256")
+# Calculate hashes. Note the plural: `algorithms` takes a LIST and the result
+# is a DICT keyed by algorithm name (defaults to ["SHA256"]).
+hashes = calculate_file_hash("file.txt")                    # {'SHA256': '2cf24dba...'}
+hashes = calculate_file_hash("file.txt", algorithms=["md5", "sha256"])
 
-# Verify hash
-is_valid = verify_file_hash("file.txt", expected_hash, algorithm="sha256")
+# Verify against a dict in that same shape. Returns (overall_ok, per_algorithm).
+expected = {"sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}
+is_valid, detail = verify_file_hash("file.txt", expected)
 ```
+
+> `calculate_file_hash_native(path, algorithm="sha256")` hashes via a
+> platform-native binary instead — faster on large files, but **singular**
+> `algorithm`, returns a plain string, and returns `None` when no tool is
+> available. The caller does the fallback:
+> `native(p) or calculate_file_hash(p)["SHA256"]`.
 
 ### Atomic Writes (v0.2.4)
 
@@ -286,6 +299,10 @@ flake8 dazzle_filekit tests
 ```
 
 ## Documentation
+
+**📖 [dazzle-filekit.readthedocs.io](https://dazzle-filekit.readthedocs.io/)** -- the rendered site: searchable, cross-linked, with `[source]` links from every symbol to its implementation, plus a [recipes](https://dazzle-filekit.readthedocs.io/en/latest/recipes.html) page of task-shaped examples and a [generated API](https://dazzle-filekit.readthedocs.io/en/latest/autoapi.html) built from the docstrings.
+
+The same pages read fine on GitHub if you would rather stay here:
 
 - **[docs/api-reference.md](docs/api-reference.md)** -- full function-by-function reference
 - **[docs/api-stability.md](docs/api-stability.md)** -- locked public API surface and known external callers. Changes to symbols listed here require a migration plan.

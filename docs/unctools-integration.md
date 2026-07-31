@@ -1,8 +1,11 @@
 # Using dazzle-filekit with UNCtools
 
+**Documents v0.4.3** -- last reviewed 2026-07-31. Claims on this page are
+exercised by `tests/one-offs/probe_docs_claims_unctools.py`.
+
 This guide explains how `dazzle_filekit` (L1, file-operation primitives) and
 [UNCtools](https://github.com/DazzleLib/UNCtools) (L0, path-identity) relate in
-the DazzleLib stack, and how to use the seam between them.
+the [DazzleLib stack](https://github.com/DazzleLib/.github/blob/main/docs/STACK-MAP.md#the-five-domains-the-rules), and how to use the seam between them.
 
 **Short version**: as of filekit **0.3.0**, UNCtools is a **hard dependency**.
 filekit owns *what you do to a file*; UNCtools owns *what a path's name is*
@@ -15,7 +18,7 @@ single source of truth.
 
 ## What you get out of the box
 
-Installing filekit installs UNCtools (and the stack bedrock `dazzle-lib`)
+Installing filekit installs UNCtools (and the [stack bedrock](https://github.com/DazzleLib/.github/blob/main/docs/STACK-MAP.md) `dazzle-lib`)
 automatically:
 
 ```bash
@@ -38,10 +41,66 @@ is_unc_path(r"C:\Users\foo\file.txt")            # False
 ```
 
 `is_unc_path` normalizes `/` → `\` and then checks the `\\` prefix -- so
-forward-slash UNC is recognized everywhere. It is one canonical definition that
-delegates to `unctools.is_unc_path` (the L0 path-identity owner); the two filekit
-export sites (`dazzle_filekit.is_unc_path` and `dazzle_filekit.utils.is_unc_path`)
-both resolve to it.
+forward-slash UNC is recognized everywhere. It delegates to
+`unctools.is_unc_path`, the L0 path-identity owner.
+
+> **Precisely:** there are two export sites -- `dazzle_filekit.is_unc_path`
+> (from `paths.py`) and `dazzle_filekit.utils.is_unc_path` (from
+> `utils/validation.py`) -- and they are *separate function objects*, not one
+> shared definition (`filekit.is_unc_path is utils.is_unc_path` -> `False`).
+> They agree on every input tried: 20 cases, 0 divergences, measured by
+> `tests/one-offs/thinking/probe_is_unc_path_two_definitions.py`. So they are
+> interchangeable in practice; use either. The v0.3.0 work collapsed the
+> *behaviour* of what were genuinely divergent copies, not the object identity.
+
+### What counts as UNC (measured, not assumed)
+
+The answer is broader than "starts with two backslashes and names a share",
+and two of these surprise people:
+
+| Input | UNC? | Note |
+|---|---|---|
+| `\\server\share` | `True` | the ordinary case |
+| `//server/share` | `True` | forward slashes, on every platform |
+| `\\server` | `True` | host only, no share |
+| `\\` / `//` | `True` | the prefix alone is enough |
+| `\\?\UNC\server\share` | `True` | extended-length UNC |
+| **`\\?\C:\Users\foo`** | **`True`** | an extended-length **local** path — still `\\`-prefixed, so it reports UNC |
+| **`\\.\pipe\name`** | **`True`** | a device path, likewise |
+| `C:\Users\foo` | `False` | |
+| `\server\share` | `False` | one leading slash is not enough |
+| `  \\server\share  ` | `False` | **no trimming** — strip your input first |
+
+The rows to design around: pad a UNC path with whitespace and it stops being
+one, while a `\\?\C:\...` local path or a `\\.\pipe\...` device *starts* being
+one.
+
+**`classify_path_origin` alone does not rescue you here** — measured, it also
+returns `'unc'` for `\\?\C:\Users\foo` and `\\.\pipe\name`, because it reads
+the prefix too. What works is stripping the extended-length prefix *first*: the
+discriminator is what follows `\\?\` — `UNC\` means network, a drive letter
+means local.
+
+```python
+from unctools import classify_path_origin
+
+def strip_extended(p: str) -> str:
+    r"""Drop a \\?\ or \\.\ prefix, restoring plain UNC form."""
+    for pre in ("\\\\?\\", "\\\\.\\"):
+        if p.startswith(pre):
+            rest = p[len(pre):]
+            return "\\\\" + rest[4:] if rest.upper().startswith("UNC\\") else rest
+    return p
+
+classify_path_origin(strip_extended(r"\\?\C:\Users\foo"))     # 'local'
+classify_path_origin(strip_extended(r"\\?\UNC\server\share")) # 'unc'
+classify_path_origin(strip_extended(r"\\.\pipe\name"))        # 'unknown'
+classify_path_origin(strip_extended(r"\\server\share"))       # 'unc'
+```
+
+Measured by `tests/one-offs/thinking/probe_classify_path_origin_vs_is_unc.py`,
+which exists because an earlier draft of this page recommended
+`classify_path_origin` on its own and the probe refuted it.
 
 ### Classifying a filesystem object vs. a path's origin
 
@@ -181,7 +240,7 @@ UNCConverter().get_reverse_mappings()   # {drive: unc}  -- the direction the old
 
 ## Related tools in the DazzleLib ecosystem
 
-- **[dazzlecmd/projects/core/fixpath](https://github.com/DazzleLib/dazzlecmd)** -- a CLI
+- **[dazzlecmd/projects/core/fixpath](https://github.com/DazzleTools/dazzlecmd)** -- a CLI
   tool that composes filekit + UNCtools for "fix this path that came from a
   shell/paste-buffer". It uses filekit's `resolve_cross_platform_path` plus
   UNCtools' `convert_to_local`, with extra CLI-noise stripping.

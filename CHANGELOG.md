@@ -5,6 +5,32 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-07-31
+
+Documentation release. No packaged behaviour changes; the only source edit is a one-word docstring correction.
+
+### Added
+- **The rendered docs site is now live at <https://dazzle-filekit.readthedocs.io/>**, and both `README.md` and `docs/README.md` point at it. Nothing in the repo previously did, so a reader had no way to discover it existed.
+- **Read the Docs site** -- Sphinx + MyST + autodoc, published from the existing Markdown so one source serves both GitHub and the rendered site. Adds `docs/conf.py`, `.readthedocs.yaml` (ubuntu-24.04 / py3.12 / `fail_on_warning` / PDF + ePub), `docs/requirements.txt`, a landing page carrying the DazzleLib stack diagram and a "which path function do I want?" flowchart, and `docs/autoapi.md` generating 136 signatures from the package's own docstrings. `sphinx.ext.viewcode` renders 111 `[source]` links -- chosen over `linkcode` because this config builds PDF/ePub, where GitHub links would be dead text.
+- **`docs/recipes.md`** -- task-shaped examples showing the combinations you actually reach for rather than isolated snippets. Example coverage of the public API rose from 26/85 callables to 55/85.
+- **A `docs` job in CI.** Read the Docs builds on push, after merge -- too late to protect a pull request. This job runs the same build with the same `-W`, so a dead cross-reference fails PR checks. It also `pip install .`, which doubles as a check that filekit imports cleanly on Linux with no Windows extras present.
+- **Four executable documentation probes** under `tests/one-offs/`: 81 documentation claims now run against a real temporary tree rather than being trusted as prose.
+
+### Fixed
+- **`README.md`: `find_files("/directory", ...)` did not fail -- it hung.** `search_paths` is a `List`; a string is iterated character by character, and `Path("/")` is the drive root, so with `recursive=True` the default the documented example attempted to walk the entire filesystem. Corrected to the list form. (The guard that now rejects this shipped in 0.4.2, from #16.)
+- **`README.md`: the entire File Verification example raised `TypeError` on both lines.** `calculate_file_hash` takes `algorithms` (a list) and returns a **dict**; `verify_file_hash` takes a **dict** of expected hashes and returns a **tuple**. The docs described a string-in/string-out API that never existed.
+- **`docs/api-reference.md` coverage went from 66% to 100%** (98/98 public symbols). Two entire shipped modules had no entry: `content` (v0.3.0) and `pathenv` (v0.3.3). Also corrects the `calculate_file_hash` / `verify_file_hash` signatures, records that `calculate_file_hash_native` returns `None` rather than falling back on the caller's behalf, and documents that `calculate_directory_hashes` keys are **relative** while `verify_files_with_manifest` resolves them against the cwd -- verify from elsewhere and every file reports failed with an actual hash of `None`, meaning "not found" rather than "changed".
+- **`BREAKING_CHANGES.md` never recorded v0.3.0**, the project's only clean break. A reader following that file's own instruction to "read top-to-bottom and apply each migration in order" would have migrated nothing. The full 0.3.0 migration table is restored, with 0.4.x marked additive.
+- **`docs/preservelib-integration.md` advised pinning `>=0.3.0,<0.4`** on the reasoning that "a future 0.4.0 may break again". It did not -- 0.4.0 was additive-only -- and that cap excluded every current release.
+- **`docs/platform-support.md` quoted "Test Counts (v0.2.4): 241 passed".** Replaced with measured CI numbers across all three platforms.
+- **`CONTRIBUTING.md` was a hollow template** -- every section announced itself and then said nothing -- and the new include-stub was about to publish that on the docs site. Rewritten around what this project actually gets wrong.
+- **`docs/unctools-integration.md`** claimed filekit's two `is_unc_path` export sites were "one canonical definition". They are separate objects that agree on all 20 inputs tested; the page now says so precisely. An earlier draft of that page also recommended `classify_path_origin` for telling a network path from a local one -- measured, it reports `unc` for extended-length local paths too, so the advice was replaced with the approach that works.
+- `dazzle_filekit/links.py`: `LinkInfo`'s docstring used `Fields:`, which napoleon does not recognize -- it parsed as a malformed block quote and failed the docs build. Changed to `Attributes:`, correct for a dataclass and the only non-napoleon section in the package. Improves `help()` output as well.
+- `setup.py` was left at `0.4.1` by the 0.4.2 release; all three version locations agree again.
+- **Two of 0.4.2's recovery tests asserted Windows semantics without a platform gate**, so they ran on the `ubuntu-latest` and `macos-latest` CI legs and failed there. Recovery re-inserts a **backslash**, which is a path separator on Windows and an ordinary filename character everywhere else: on POSIX the candidate names one file called `x\tdir` rather than a directory `x/tdir`. `test_recovery_for_every_silent_escape` and `test_multiple_escapes_in_one_path` are now gated on `os.sep`; the type-guard tests are deliberately left ungated, since rejecting a bare string must hold on every platform. This is the third POSIX-only CI failure in this repo (v0.3.3, v0.4.0, and here), which is why `CONTRIBUTING.md` leads with it and `tests/one-offs/run_suite_under_wsl.sh` exists.
+- **`docs/unctools-integration.md` linked to `github.com/DazzleLib/dazzlecmd`, which 404s** -- dazzlecmd lives under **`DazzleTools/`**. Caught by the new `linkcheck` step on its first run, which is a reasonable argument for the step existing.
+- `linkcheck` skips **anchors** on `github.com` URLs only. GitHub emits heading ids in a form the checker cannot match (both `id="x"` and `id="user-content-x"`, injected client-side), so every `#anchor` into a blob reported broken while resolving fine in a browser -- verified by hand against the STACK-MAP anchors this project links to. The URLs themselves are still checked: 12 GitHub links, all passing, 0 broken overall.
+
 ## [0.4.2] - 2026-07-31
 
 ### Added

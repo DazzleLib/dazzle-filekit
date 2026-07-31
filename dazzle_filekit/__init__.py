@@ -176,7 +176,7 @@ from .longpath import (
     shim_path,
 )
 
-__version__ = '0.4.2'
+__version__ = '0.4.3'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """

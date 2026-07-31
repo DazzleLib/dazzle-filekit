@@ -8,7 +8,8 @@ must include a migration commit in the downstream caller(s) listed below.
 `tests/test_import_stability.py` is the automated canary for this document.
 If you rename or remove a locked symbol, that test will fail.
 
-Last audited: 2026-06-17 (filekit v0.3.0, #15 complete -- link primitives, D4 renames, V9 fold).
+Last audited: 2026-07-30 (filekit v0.4.1 -- `longpath` added below; no locked
+symbol changed since the v0.3.0 audit).
 
 > **v0.3.0 (#15) is a deliberate clean break.** Unlike the deprecation-shim
 > migration procedure at the bottom of this doc, 0.3.0 removed/renamed locked
@@ -17,7 +18,7 @@ Last audited: 2026-06-17 (filekit v0.3.0, #15 complete -- link primitives, D4 re
 > had not shipped to PyPI when these landed, so no released contract broke
 > mid-stream.
 
-### v0.3.0 breaking changes (#15)
+## v0.3.0 breaking changes (#15)
 
 | Old symbol | Replacement | Migrated consumer(s) |
 |------------|-------------|----------------------|
@@ -51,9 +52,50 @@ Last audited: 2026-06-17 (filekit v0.3.0, #15 complete -- link primitives, D4 re
 | `verify_file_hash`, `verify_copied_files` | README example |
 | `configure_logging`, `enable_verbose_logging` | README example |
 
+### v0.4.0 additions (`longpath`)
+
+Windows `MAX_PATH` shims via on-demand junctions -- the remedy for the
+condition `utils.validation.is_valid_path` already detected. Windows-only in
+effect; a no-op where `PATH_MAX` is 4096/1024.
+
+**Not yet load-bearing.** No external caller imports these today, so unlike the
+rows elsewhere in this document they are not locked by an existing consumer.
+The intended first consumer is dazzlecmd (`dz longpath`, plus a `fixpath -o`
+branch), which is not built yet. Treat the surface as settled but young: if a
+signature has to move, now is the cheap moment, and this section should be
+re-audited once dazzlecmd depends on it.
+
+| Symbol | Description |
+|--------|-------------|
+| `longpath` (submodule) | The long-path shim domain module |
+| `shim_path(path, root=None, threshold=240)` | One-call entry point; returns an openable path and **never raises for a path-shaped input** (falls back to the original) |
+| `needs_shim(path, threshold=DEFAULT_THRESHOLD)` | The trigger. `False` on POSIX, and `False` for an already-`\\?\`-prefixed path |
+| `plan_shim(path, root=None, threshold=..., id_len=4)` -> `ShimPlan` | Pure decision, no filesystem writes; anchors at the shallowest ancestor that fits |
+| `ShimPlan` | `original` / `needed` / `anchor` / `link` / `shimmed` / `reason` / `warnings`, plus `.usable` and `.resolved()` |
+| `resolve_shim_root(target=None, candidates=None, probe=True)` | Shortest **writable** root, probed at runtime |
+| `candidate_roots(target=None)` | The ordered candidates, shortest first |
+| `budget_for(root, id_len=4)` | Longest filename a shim under `root` can serve |
+| `create_shim(plan, max_id_len=16)` | Materialise the junction; verifies an existing one points at the requested anchor and lengthens the id on hash collision. Mutates `plan.link` / `plan.shimmed` to what was actually used |
+| `remove_shim(link)` | Remove a shim, target untouched; re-checks junction-ness immediately before `os.rmdir` |
+| `reap_shims(root, max_age_seconds=86400, now=None)` | Age-based reaper; considers only junctions |
+| `MAX_PATH` (260), `USABLE_PATH` (259), `DEFAULT_THRESHOLD` (240), `NAME_MAX` (255), `SHIM_DIR_NAME` (`.dzs`) | Constants |
+
+**Behavioural contracts worth pinning** -- each has a regression test, and each
+was a real defect first:
+
+- `shim_path` never raises for a path-shaped input. The guard covers `OSError`,
+  `ValueError` **and** `ctypes.ArgumentError`, because an embedded NUL surfaces
+  as a different type per interpreter: 3.12+ raises `ValueError` via
+  `os.path.isjunction`, while 3.9-3.11 raise `ctypes.ArgumentError` from the
+  DeviceIoControl fallback -- which is not a `ValueError`.
+- `create_shim` never reports success for a junction pointing at a *different*
+  anchor. Anchor ids are truncated hashes and do collide.
+- `remove_shim` / `reap_shims` never touch a target's contents, and refuse
+  anything that is not a junction.
+
 ### v0.3.0 additions (locked as of v0.3.0)
 
-Restored from unctools' 0.2.0 split (STACK-MAP D7), as the Option D resolver edge.
+Restored from unctools' 0.2.0 split ([STACK-MAP D7](https://github.com/DazzleLib/.github/blob/main/docs/STACK-MAP.md#decisions-d-numbers)), as the Option D resolver edge.
 
 | Symbol | Description |
 |--------|-------------|
@@ -74,7 +116,7 @@ Restored from unctools' 0.2.0 split (STACK-MAP D7), as the Option D resolver edg
 | `paths.compute_relative_path(target, start)` | `..`-traversing relative path (distinct from `get_relative_path`) |
 | `utils.validation.read_junction_target` | Junction target via the reparse buffer |
 
-**Cross-layer schemas consumed (#15 Phase D):** `collect_file_metadata` -> `dazzle_lib.FileMetadataDict`, `collect_timestamp_info` -> `TimestampsDict`, `LinkInfo.to_dict` -> `LinkTargetDict` (STACK-MAP D10).
+**Cross-layer schemas consumed (#15 Phase D):** `collect_file_metadata` -> `dazzle_lib.FileMetadataDict`, `collect_timestamp_info` -> `TimestampsDict`, `LinkInfo.to_dict` -> `LinkTargetDict` ([STACK-MAP D10](https://github.com/DazzleLib/.github/blob/main/docs/STACK-MAP.md#decisions-d-numbers)).
 
 **Dependency change (0.3.0):** `dazzle-lib>=0.2.0` and `unctools>=0.2.2` are now required (the `PathVariantResolver` seam + the V9 drive-map fold); the optional `[unctools]` extra is removed.
 

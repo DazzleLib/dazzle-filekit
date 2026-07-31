@@ -16,9 +16,11 @@ collection-taking entry points.
 """
 
 import logging
+import os
 from pathlib import Path
 
 import pytest
+
 
 from dazzle_filekit import (
     SILENT_ESCAPE_ORIGINS,
@@ -31,6 +33,25 @@ from dazzle_filekit import (
     move_files_with_path,
     recover_unescaped_path,
     suggest_reescaped_path,
+)
+
+
+# Recovery re-inserts a BACKSLASH, which is a path separator on Windows and an
+# ordinary filename character everywhere else. A test that creates a real
+# directory and expects a backslash-joined string to resolve to it therefore
+# asserts Windows semantics and must be gated -- on POSIX the candidate names
+# one file called "x\tdir", not a directory "x/tdir".
+#
+# The TYPE GUARD tests below are deliberately NOT gated: rejecting a bare
+# string is platform-independent and must hold everywhere.
+#
+# This is the third POSIX-only CI failure in this repo (v0.3.3's
+# Windows-host-locked probe suite, v0.4.0's twelve _same_dir tests, and this
+# file). See CONTRIBUTING.md, "The one thing most likely to trip you up", and
+# tests/one-offs/run_suite_under_wsl.sh to reproduce the Linux leg locally.
+windows_separator_only = pytest.mark.skipif(
+    os.sep != "\\",
+    reason="recovery re-inserts a backslash; only a path separator on Windows",
 )
 
 
@@ -103,6 +124,7 @@ def test_other_iterables_pass_the_guard(tmp_path):
 # caller would have produced by forgetting the raw-string prefix.
 # ``str(tmp) + "\\temp"`` mistyped is ``str(tmp) + TAB + "emp"``.
 
+@windows_separator_only
 @pytest.mark.parametrize("ch,letter", sorted(SILENT_ESCAPE_ORIGINS.items()))
 def test_recovery_for_every_silent_escape(tmp_path, ch, letter):
     real = tmp_path / (letter + "dir")
@@ -135,6 +157,7 @@ def test_neither_exists_returns_original(tmp_path):
     assert recover_unescaped_path(mangled) == (mangled, False)
 
 
+@windows_separator_only
 def test_multiple_escapes_in_one_path(tmp_path):
     """``"C:\\temp\\new"`` mistyped carries a TAB and a NEWLINE; the
     candidate re-escapes all of them at once."""

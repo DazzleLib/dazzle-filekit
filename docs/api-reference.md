@@ -1,13 +1,17 @@
 # API Reference
 
 Full function reference for `dazzle_filekit`. For a quick-start walkthrough,
-see the [README](../README.md). For the locked public API surface that
+see the [README](https://github.com/DazzleLib/dazzle-filekit/blob/main/README.md). For the locked public API surface that
 external tools depend on, see [api-stability.md](api-stability.md).
+
+**Documents v0.4.3** — last reviewed 2026-07-31.
 
 ## Table of Contents
 
 - [Cross-Platform Utilities](#cross-platform-utilities)
 - [Path Functions](#path-functions)
+- [Content Operations](#content-operations-v030-dazzle_filekitcontent)
+- [PATH Environment Values](#path-environment-values-v033-dazzle_filekitpathenv)
 - [File Operations](#file-operations)
 - [Metadata Module](#metadata-module)
 - [Platform-Specific (Windows)](#platform-specific-windows)
@@ -15,9 +19,25 @@ external tools depend on, see [api-stability.md](api-stability.md).
 - [Verification Functions](#verification-functions)
 - [Utility Functions](#utility-functions)
 - [Validation Functions](#validation-functions)
+- [Is this a *place*?](#is-this-a-place-v042)
+- [Long-Path Shims](#long-path-shims-v040-dazzle_filekitlongpath)
 - [Logging Configuration](#logging-configuration)
 
 ---
+
+```{admonition} Several functions take a LIST where you would expect one path
+:class: warning
+
+`find_files`, `find_regex_files`, `calculate_total_size`,
+`copy_files_with_path` and `move_files_with_path` all take a **collection** as
+their first argument, not a single path. Passing a bare string does not raise
+— a string is iterable, so it is consumed one character at a time. Each
+character becomes a search root, and since `Path("/")` is the drive root with
+`recursive=True` the default, `find_files("/some/dir")` can attempt to walk the
+entire filesystem.
+
+Always wrap: `find_files([src], ...)`, `calculate_total_size([src])`.
+```
 
 ## Cross-Platform Utilities
 
@@ -61,8 +81,12 @@ The following path helpers live in `dazzle_filekit.paths`:
 - `compute_relative_path(target, start, fallback_to_absolute=True)` — **v0.3.0**:
   the `..`-traversing relative path from `start` to `target` (`os.path.relpath`),
   with a Windows cross-drive fallback. Distinct from `get_relative_path`.
-- `find_files(directory, patterns, exclude)` — Find files matching
-  glob patterns.
+- `find_files(search_paths, patterns=None, recursive=True, exclude_patterns=None)`
+  — Find files matching glob patterns. **`search_paths` is a LIST of
+  directories**, not a single one. Passing a bare string iterates it character
+  by character, and since `Path("/")` is the drive root with `recursive=True`
+  the default, `find_files("/some/dir")` will attempt to glob the entire
+  filesystem. Always pass a list: `find_files([src], patterns=["*.py"])`.
 - `find_regex_files(directory, pattern)` — Find files matching a regex.
 - `collect_files_from_include_file(include_file)` — Read a list of
   files from an include file (for batch operations).
@@ -92,8 +116,76 @@ destination-relative analysis lives at L3/preservelib):
   the DeviceIoControl reparse buffer).
 - `create_junction(target, link, force=False)` — Windows NTFS junction via
   PowerShell `New-Item` (directory-only, no elevation).
+- `create_junction_raw(target, link, force=False)` — **v0.3.4**: the same
+  junction, written straight into the mount-point reparse buffer
+  (`FSCTL_SET_REPARSE_POINT`, pure ctypes, no subprocess). Two differences that
+  matter: the target does **not** need to exist, so intentionally-broken
+  junctions can be recreated when mirroring a tree, and the
+  SubstituteName/PrintName pair is stored without normalization, so
+  `os.readlink` round-trips byte-for-byte. Unprivileged, directory-only,
+  Windows-only.
 - `create_hardlink(target, link, force=False)` — `os.link` (file-only,
   cross-device aware).
+- `remove_link(path)` → `bool` — detach a symlink, junction, or hard link
+  **without deleting what it points at**. The distinction matters more than it
+  looks: a junction is reported as an ordinary directory by `os.path.islink`,
+  `os.path.isdir` and `DirEntry.is_symlink` alike, so a careless recursive
+  delete can walk through one into real data.
+
+---
+
+## Content Operations (v0.3.0, `dazzle_filekit.content`)
+
+Read-modify-write text replacement, built on `open_file` +
+`atomic_write_text` so a crash mid-write cannot truncate the original. The L1
+home of the `replace_in_file` family unctools shed in its 0.2.0
+probe-not-mutate split.
+
+- `replace_in_file(file_path, old_text, new_text, *, encoding='utf-8', try_path_variants=False, resolver=None)`
+  → `bool` — replace every occurrence in one file. Returns whether anything
+  changed.
+- `batch_replace_in_files(directory, old_text, new_text, pattern='*.txt', recursive=True, *, encoding='utf-8', try_path_variants=False, resolver=None)`
+  → `dict[str, bool]` — the same over a glob set, mapping each path to whether
+  it changed.
+
+Both accept the `try_path_variants` / `resolver` seam described under
+[unctools integration](unctools-integration.md), so a UNC path that fails can
+be retried under its mapped-drive spelling.
+
+---
+
+## PATH Environment Values (v0.3.3, `dazzle_filekit.pathenv`)
+
+Helpers for `PATH`-style environment **values** — the `;`- or `:`-separated
+strings themselves, not the filesystem paths inside them. Pure string logic,
+no I/O.
+
+**The distinction that gives this module its reason to exist:** a PATH value's
+platform semantics are fixed by *where it came from*, not by the host reading
+it. A Windows registry `Path` stays `;`-separated, `%VAR%`-bearing, and
+case-insensitive even when a POSIX CI runner parses it. Every function
+therefore takes an explicit `platform` argument, defaulting to the host only
+when you do not say otherwise. This is the deliberate mirror of
+`normalize_cross_platform_path`'s host-*directional* behaviour — the two module
+docstrings cross-reference the difference.
+
+- `split_path_value(value, platform=None)` → `list[str]` — split into non-empty
+  entries, on `;` or `:` according to the declared platform.
+- `normalize_path_entry(entry, platform=None)` → `str` — normalize one entry
+  for identity comparison (expands `%VAR%` via `ntpath` for Windows values, and
+  case-folds where the platform is case-insensitive).
+- `path_value_contains(value, directory, platform=None)` → `bool` — is
+  `directory` already among the entries, compared by normalized identity rather
+  than string equality.
+- `append_path_value(value, directory, platform=None)` → `str` — the value with
+  `directory` appended if not already present; unchanged otherwise.
+- `host_path_platform()` → `str` — the running host's dialect, `'windows'` or
+  `'posix'`.
+- `PLATFORM_WINDOWS` (`'windows'`) / `PLATFORM_POSIX` (`'posix'`) — the accepted
+  `platform` values.
+
+Persistence stays with the caller: this module computes the new value and never
+writes it anywhere.
 
 ---
 
@@ -153,6 +245,20 @@ These delegate to the rich `dazzle_filekit.metadata` module as of v0.2.4:
 - `copy_tree_preserving_links(src, dst, *, dirs_exist_ok=False, ignore=None, ignore_dangling_symlinks=False)` —
   `shutil.copytree(symlinks=True)` wrapper with documented intent.
   Never traverses junctions on Windows.
+- `AtomicStreamWriter(path, *, encoding='utf-8', newline=None)` — the streaming
+  form of the same tmp+rename guarantee, for output too large to build in
+  memory first (ported from dazzlesum's `MonolithicWriter`). Use it as a
+  context manager and write incrementally; the destination is replaced in one
+  rename on clean exit, and left untouched if the block raises.
+
+  ```python
+  from dazzle_filekit import AtomicStreamWriter
+
+  with AtomicStreamWriter("manifest.txt") as w:
+      for path, digest in hashes.items():
+          w.write(f"{digest}  {path}\n")
+  # manifest.txt appears complete, or not at all
+  ```
 
 ---
 
@@ -266,9 +372,50 @@ platform via `shutil.disk_usage`.
 File content verification via hash algorithms. Supports MD5, SHA1,
 SHA256, SHA512 and other `hashlib`-compatible algorithms.
 
-- `calculate_file_hash(path, algorithm='sha256')` — Calculate file hash.
-- `verify_file_hash(path, expected_hash, algorithm='sha256')` — Verify
-  a file matches an expected hash.
+- `calculate_file_hash(file_path, algorithms=None, buffer_size=65536, preserve_case=False)`
+  → `dict` — hash a file with **one or more** algorithms. Note the plural: it
+  takes a *list* and returns a **dict** keyed by algorithm name, defaulting to
+  `['SHA256']`.
+
+  ```python
+  calculate_file_hash("x.txt")                        # {'SHA256': '2cf24dba...'}
+  calculate_file_hash("x.txt", algorithms=["md5", "sha256"])
+  ```
+- `detect_native_hash_tool(algorithm='sha256')` — Locate a platform-native
+  checksum binary (`certutil` on Windows, `sha256sum`/`shasum` on POSIX), or
+  `None` when none is usable. Ported from dazzlesum.
+- `calculate_file_hash_native(file_path, algorithm='sha256', tool=None)`
+  → `str | None` — hash via a platform-native binary instead of `hashlib`,
+  which is materially faster on large files because the work happens outside
+  the interpreter. **Returns `None` when no tool is available or the tool
+  fails** — it does *not* fall back on your behalf. The caller decides:
+
+  ```python
+  digest = (calculate_file_hash_native(p, "sha256")
+            or calculate_file_hash(p, algorithms=["sha256"])["sha256"])
+  ```
+
+  Note the shape difference from its sibling: this one takes `algorithm`
+  (singular, a string) and returns a string; `calculate_file_hash` takes
+  `algorithms` (a list) and returns a dict.
+- `verify_file_hash(file_path, expected_hashes)` → `(bool, dict)` — verify a
+  file against a **dict** of expected hashes, in the shape
+  `calculate_file_hash` returns. The result is a tuple: overall pass/fail, plus
+  a per-algorithm breakdown.
+
+  ```python
+  expected = calculate_file_hash("x.txt")     # {'SHA256': '...'}
+  ok, detail = verify_file_hash("x.txt", expected)
+  ```
+```{admonition} Singular vs plural is not a typo
+:class: warning
+
+`calculate_file_hash` takes **`algorithms`** (a list) and returns a dict.
+`calculate_file_hash_native` takes **`algorithm`** (a string) and returns a
+string. They are different functions with different shapes; the names are
+one character apart.
+```
+
 - `verify_files_with_manifest(manifest_path)` — Verify files against
   a saved hash manifest.
 - `calculate_directory_hashes(directory, algorithm='sha256')` — Hash
@@ -276,6 +423,19 @@ SHA256, SHA512 and other `hashlib`-compatible algorithms.
 - `save_hashes_to_file(hashes, output_file)` — Persist a hash dict to
   a file.
 - `load_hashes_from_file(hash_file)` — Load a persisted hash dict.
+
+```{admonition} Manifest keys are relative, and verification is cwd-sensitive
+:class: warning
+
+`calculate_directory_hashes` returns keys **relative to the directory it
+scanned** (`'a.py'`, not `'D:/proj/a.py'`), and `verify_files_with_manifest`
+resolves them against the **current working directory**. Verifying from
+anywhere else silently reports every file as failed, with the actual hash
+`None` — because the file was never found, not because it changed.
+
+Either `chdir` into the scanned directory before verifying, or re-key the dict
+to absolute paths first.
+```
 - `compare_directories(dir1, dir2)` — Compare directory contents by
   file existence, size, and hash.
 - `verify_copied_files(src_dir, dst_dir)` — Verify a copy operation
@@ -292,13 +452,21 @@ SHA256, SHA512 and other `hashlib`-compatible algorithms.
 - `fix_path_separators(path)` — Normalize path separators to OS native.
 - `fix_path_case(path)` — Normalize case where the filesystem is
   case-insensitive.
+- `get_case_sensitive_path(path)` → `str` — **v0.3.0**: the path as the
+  filesystem actually stores it on Windows (so `c:\users\foo` comes back
+  `C:\Users\Foo`), and unchanged elsewhere. Useful when a path is about to be
+  displayed, logged, or compared against something the OS produced.
+- `path_exists_case_sensitive(path)` → `bool` — **v0.3.0**: does the path exist
+  *with the exact case given*. On a case-insensitive filesystem `os.path.exists`
+  answers `True` for a spelling the disk does not use; this does not. Absorbed
+  from unctools' removed case-sensitivity helpers.
 - `get_system_encoding()` — Get the filesystem encoding.
 - `get_system_temp_dir()` — Cross-platform temp directory.
 - `get_home_dir()` — Current user's home directory.
 - `get_app_data_dir(app_name)` — Application data directory
   (`%APPDATA%\<app>` on Windows, `~/.config/<app>` on Linux,
   `~/Library/Application Support/<app>` on macOS).
-- `get_drive_mappings()` — **removed in 0.3.0** (DazzleLib stack V9). Drive↔UNC
+- `get_drive_mappings()` — **removed in 0.3.0** ([DazzleLib stack](https://github.com/DazzleLib/.github/blob/main/docs/STACK-MAP.md) V9). Drive↔UNC
   mapping is path-identity knowledge owned by L0; its `win32wnet` provider-chain
   scan was folded into `unctools` (≥0.2.2). Use
   `unctools.converter.get_mappings()` (UNC→drive) or
@@ -332,6 +500,173 @@ Path validation helpers in `dazzle_filekit.utils.validation`.
 - `read_junction_target(path)` — **v0.3.0**: the junction's target, read from
   its reparse buffer (same DeviceIoControl machinery as `is_junction`).
 
+### Is this a *place*? (v0.4.2)
+
+- `is_device_path(path)` → `bool` — does this path name a device or sink rather
+  than somewhere a file can actually live?
+- `POSIX_DEVICE_PATHS` — recognized POSIX devices and shell sinks
+  (`/dev/null`, `/dev/stdout`, `/dev/tty`, …).
+- `WINDOWS_INVALID_NAMES` — reserved Windows device names (`NUL`, `CON`, `AUX`,
+  `COM1`–`COM9`, `LPT1`–`LPT9`, …).
+
+**A different question from `is_valid_path`**, and the difference is the whole
+point:
+
+| | asks | verdict on `/dev/null` |
+|---|---|---|
+| `is_valid_path` | is this string **legal**? | `True` — a perfectly legal POSIX path |
+| `is_device_path` | is this string a **place**? | `True` — and so *not* somewhere a file lives |
+
+Anything that harvests paths out of shell commands, config files, or logs needs
+the second question. Recognized: POSIX devices and sinks, kernel
+pseudo-filesystems (`/proc/…`, `/sys/…`, `/dev/fd/N`), and Windows reserved
+names — the last **position-independent and extension-blind**, because Windows
+resolves `C:\anywhere\nul.txt` to the device wherever it appears.
+
+```python
+from dazzle_filekit import is_device_path
+
+is_device_path("/dev/null")       # True
+is_device_path("NUL")             # True
+is_device_path("C:/tmp/nul.txt")  # True   -- still the device
+is_device_path("/home/me/notes")  # False
+is_device_path("console-app")     # False  -- substring, not a device
+```
+
+Both platforms' names are recognized on **both** platforms deliberately: a
+Windows host routinely parses Git-Bash or WSL commands containing
+`2>/dev/null`, and a POSIX host may read Windows-authored scripts. The question
+is about the string, not the host.
+
+```{admonition} Why this exists
+:class: note
+
+Added for [Claude-Session-Backup #56](https://github.com/DazzleML/Claude-Session-Backup/issues/56),
+where `2>/dev/null` — scraped out of shell commands while working out which
+folders a session had touched — was being ranked as that session's **top
+working directory**, at 119 hits, outranking the actual repository.
+```
+
+---
+
+## Long-Path Shims (v0.4.0, `dazzle_filekit.longpath`)
+
+The remedy for the condition `is_valid_path` above merely *detects*: a path
+over `MAX_PATH` without a `\\?\` prefix. Windows-only in effect — `PATH_MAX` is
+4096 on Linux and 1024 on macOS/BSD, so `needs_shim` returns `False` there and
+every entry point degrades to a no-op.
+
+**Why not just use `\\?\`.** The extended-length prefix lifts the limit at the
+Win32 API layer, which is enough for a well-behaved caller. It does not help an
+application that builds the correct prefixed path and then copies it into a
+fixed 260-byte buffer, truncating the tail and reporting the file missing —
+measured in two independent PDF readers. A `longPathAware` manifest does not
+reach it either, because the limit is internal to the application rather than
+at the API gate. Nothing outside such an application can repair its buffer;
+what *can* change is the length of the string handed to it. A directory
+junction at a short root does that with no cooperation from the consumer —
+which is also why it fixes readers that are not yet installed.
+
+### The one-call entry point
+
+- `shim_path(path, root=None, threshold=240)` → `Path` — an openable path for
+  `path`, creating a junction if one is needed. **Never raises for a
+  path-shaped input**: an unnecessary shim, an impossible plan, an unwritable
+  root, or a failed junction all fall back to the original path, so a caller
+  substituting this for a bare path needs no new exception handling.
+
+```python
+from dazzle_filekit import shim_path
+
+p = shim_path(r"D:\deep\...\a 244-character filename.pdf")
+subprocess.run([reader, str(p)])     # a MAX_PATH-bound reader can open it
+```
+
+### Deciding whether a shim is needed
+
+- `needs_shim(path, threshold=DEFAULT_THRESHOLD)` → `bool` — `False` on POSIX,
+  and `False` for a path already carrying an extended-length prefix (it has
+  opted out of the limit, so rewriting it would be pointless).
+- `plan_shim(path, root=None, threshold=..., id_len=4)` → `ShimPlan` — a pure
+  decision with **no filesystem writes**. Anchors at the *shallowest* ancestor
+  whose junction still brings the result under `USABLE_PATH`, so one shim
+  covers the widest subtree and repeat opens reuse it; where the filename is
+  long enough that only its immediate parent fits, that is chosen instead.
+
+`ShimPlan` carries `original`, `needed`, `anchor` (directory to junction),
+`link` (where the junction goes), `shimmed` (the rewritten path), `reason` and
+`warnings`, plus `plan.usable` (an openable path exists) and `plan.resolved()`
+(the shimmed path when possible, else the original — never raises).
+
+A component longer than `NAME_MAX` is reported in `plan.reason` rather than
+faked: no link shortens a single path component, because the offending name
+must still appear in the shimmed path.
+
+### Choosing where shims live
+
+- `resolve_shim_root(target=None, candidates=None, probe=True)` → `Path | None`
+  — the shortest **writable** root, probed at runtime. `probe=False` returns
+  the first candidate unchecked.
+- `candidate_roots(target=None)` → `list[Path]` — the ordered candidates,
+  shortest first.
+- `budget_for(root, id_len=4)` → `int` — the longest filename a shim under
+  `root` can serve.
+
+**The root's own length is load-bearing** — it is subtracted from the
+filename's budget, so the ordering is not cosmetic. Measured against a corpus
+whose longest filename is 244 characters:
+
+| Root | Length | Files still broken |
+|---|---|---|
+| `C:\.dzs` | 7 | 0 |
+| `%USERPROFILE%\.dzs` (user `Extreme`) | 21 | 1 |
+| `%USERPROFILE%\.dzs` (user `Administrator`) | 27 | 4 |
+| `%LOCALAPPDATA%\dazzlecmd\longpath` | 49 | 64 |
+
+The obvious choice is the broken one, and it fails silently on only the longest
+names. `%USERPROFILE%` is offered as the one tier guaranteed writable but ranks
+*below* the drive roots, because its length varies with the username: identical
+code serves every file on one machine and drops the longest on another.
+
+### Shim lifecycle
+
+- `create_shim(plan, max_id_len=16)` → `bool` — materialises the junction,
+  reusing an existing one **for the same anchor**. Updates `plan.link` and
+  `plan.shimmed` to whatever was actually used.
+- `remove_shim(link)` → `bool` — removes a shim, leaving its target untouched.
+- `reap_shims(root, max_age_seconds=86400, now=None)` → `list[Path]` — removes
+  shims older than the threshold; considers only junctions and leaves anything
+  else in the directory alone.
+
+**Two correctness notes worth knowing before extending this.**
+
+*Anchor ids collide.* The id is a truncated hash, so two unrelated directories
+can map to one link name — at the 4-character default that is an even chance
+around three hundred distinct anchors. `create_shim` therefore verifies that an
+existing junction points at the requested anchor and lengthens the id on
+collision, rather than treating any junction at the expected link as proof of a
+previous mint for it. It also treats `create_junction`'s return value as
+advisory and re-checks what landed on disk, because that function's `exists()`
+test is not atomic with its creation call and a concurrent caller can replace
+the result.
+
+*Deletion never recurses.* `remove_shim` re-checks that its target is a
+junction immediately before deleting and uses `os.rmdir`, which unlinks the
+reparse point without descending into it. That is guarded rather than assumed
+because every naive test misidentifies a junction: `os.path.islink()` is
+`False`, `os.path.isdir()` is `True`, and `DirEntry.is_symlink()` is `False`.
+
+### Constants
+
+- `MAX_PATH` (260) — the Windows legacy limit, inclusive of the terminating NUL.
+- `USABLE_PATH` (259) — the longest path a MAX_PATH-bound consumer can hold.
+- `DEFAULT_THRESHOLD` (240) — the default trigger, deliberately below
+  `USABLE_PATH`: some handlers append to the path they are given, so a path
+  that merely *fits* can still overflow once the consumer touches it.
+- `NAME_MAX` (255) — the longest single filename, on **every** platform.
+- `SHIM_DIR_NAME` (`.dzs`) — the directory name used for shim roots. Short by
+  design; every character here is one taken from a filename.
+
 ---
 
 ## Logging Configuration
@@ -344,4 +679,13 @@ Path validation helpers in `dazzle_filekit.utils.validation`.
 
 ## Version
 
-- `__version__` — Package version string. Currently `'0.3.0'`.
+- `__version__` — Package version string.
+
+**This reference documents v0.4.1** (last reviewed 2026-07-30). Anything added
+after that release is in [`CHANGELOG.md`](https://github.com/DazzleLib/dazzle-filekit/blob/main/CHANGELOG.md) but may not have
+reached this page yet — check there first if a symbol you expected is missing.
+
+> Maintainers: bump the line above when you add to the public surface, the same
+> way `api-stability.md` carries its `Last audited:` marker. It was left reading
+> `'0.3.0'` across four releases, which is how `content` (v0.3.0) and `pathenv`
+> (v0.3.3) both went undocumented here without anyone noticing.

@@ -1,0 +1,17 @@
+/* dazzle-filekit doc tweaks. Kept minimal -- furo's defaults are good; these
+   fix only what the content actually needs. */
+
+/* Wide API tables (the shim-root budget table, the UNC-detection matrix)
+   scroll inside their own box rather than forcing the page sideways. */
+.table-wrapper { overflow-x: auto; }
+
+/* Mermaid diagrams centre and scale down on narrow screens. */
+.mermaid { text-align: center; margin: 1.5rem 0; }
+.mermaid svg { max-width: 100%; height: auto; }
+
+/* Inline literals are load-bearing here (path spellings like \?\C:\), so
+   give them a touch more contrast than the default. */
+code.literal { font-size: 0.875em; }
+
+/* Cards on the landing page get even heights in a row. */
+.sd-card { height: 100%; }

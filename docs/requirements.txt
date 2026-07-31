@@ -1,0 +1,17 @@
+# Documentation build dependencies.
+#
+# Pinned with lower bounds only: a docs build that breaks on a new Sphinx
+# release should be noticed and fixed, not frozen out. `fail_on_warning` in
+# .readthedocs.yaml means such a break surfaces as a red build rather than a
+# quietly degraded page.
+#
+# Local build:
+#     pip install -r docs/requirements.txt
+#     sphinx-build -b html docs docs/_build/html -W
+
+sphinx>=8.1
+myst-parser[linkify]>=4.0  # Markdown source; [linkify] auto-links bare URLs
+furo>=2024.8.6            # theme: readable defaults, light/dark, good mobile
+sphinx-copybutton>=0.5.2  # copy button on code blocks
+sphinx-design>=0.6.1      # cards / grids on the landing page
+sphinxcontrib-mermaid>=1.0  # diagrams as text, versioned alongside the prose

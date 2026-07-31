@@ -51,7 +51,7 @@ LINK_HARDLINK = "hardlink"
 class LinkInfo:
     """Intrinsic facts about a single link (no destination relationship).
 
-    Fields:
+    Attributes:
         link_path: the link itself.
         kind: ``'symlink'`` | ``'junction'`` | ``'hardlink'`` | ``None`` (not a link).
         raw_target: target as stored in the link (readlink result for symlinks,

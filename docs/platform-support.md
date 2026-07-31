@@ -1,5 +1,7 @@
 # Platform Support
 
+**Documents v0.4.1** — last reviewed 2026-07-30.
+
 `dazzle-filekit` is designed for cross-platform file operations across
 Windows, Linux, and macOS. Each platform gets platform-specific
 optimizations where they matter (NTFS metadata on Windows, POSIX
@@ -20,15 +22,30 @@ cross-platform API stays consistent.
 unit tests using platform-simulation, but we don't have a physical box
 in the CI loop -- community bug reports welcome.
 
-## Test Counts (v0.2.4)
+## Test Counts (v0.4.1)
 
-| Suite | Windows | WSL (Ubuntu-22.04) |
-|-------|---------|---------------------|
-| filekit | 241 passed, 9 skipped | 200 passed, 50 skipped |
+Measured from the CI matrix at `8a47ec4`, not from a single dev box — the
+numbers below are what `[ubuntu-latest, windows-latest, macos-latest] ×
+[3.9 … 3.13]` actually reported.
 
-Skip counts differ because platform-specific features (SDDL/ctime/ADS on
-Windows, xattrs/is_wsl env detection on Linux) skip on the other
-platform. The platform-simulation suite
+| Platform | Passed | Skipped |
+|----------|--------|---------|
+| windows-latest (3.12 / 3.13) | 556 | 12 |
+| windows-latest (3.9 – 3.11) | 555 | 13 |
+| ubuntu-latest (3.9 – 3.13) | 396 | 172 |
+| macos-latest (3.9 – 3.13) | 392 | 176 |
+
+Skip counts differ because platform-specific features (SDDL/ctime/ADS and the
+whole `longpath` module on Windows, xattrs/is_wsl env detection on Linux) skip
+on the other platform. The Windows figure varies by one between 3.11 and 3.12
+because `is_junction` takes a different code path on each side of
+`os.path.isjunction`'s introduction in 3.12.
+
+**Running the suite on one platform is not sufficient.** This repo has twice
+shipped a failure that only a POSIX runner could see — a Windows-host-locked
+probe suite in v0.3.3, and twelve Windows-semantics tests missing `@win_only`
+in v0.4.0. `tests/one-offs/run_suite_under_wsl.sh` reproduces the Linux leg
+from a Windows dev box for exactly this reason. The platform-simulation suite
 (`tests/test_paths_platform_simulation.py`) exercises both Windows and
 Unix branches of `_prepare_path_format` from a single host OS using
 `monkeypatch` -- regression protection that fires regardless of which
@@ -62,8 +79,22 @@ runtime dependency in v0.2.4 -- installed automatically via
 - **Windows attribute flags** -- `is_hidden`, `is_system`, `is_readonly`,
   `is_archive` booleans alongside the raw attribute bitmask
 - **Owner / group as `DOMAIN\Name`** strings (with SID fallback)
-- **Long path support** -- `\\?\` extended-length prefix stripping in
-  `normalize_cross_platform_path`
+- **Long path handling** -- two distinct things, easily confused:
+  - `normalize_cross_platform_path` strips a `\\?\` extended-length prefix, so
+    a path that already carries one round-trips cleanly.
+  - The `longpath` module (v0.4.0) is the actual *remedy* for exceeding
+    `MAX_PATH`. `\\?\` only lifts the limit at the Win32 API layer; it does
+    **not** help an application that builds the prefixed path and then copies
+    it into a fixed 260-byte buffer — measured in two independent PDF readers,
+    with `LongPathsEnabled=1` already set. `shim_path` sites a junction at a
+    short root instead, giving the same bytes a shorter name that any
+    application can open. See
+    [Long-Path Shims](api-reference.md#long-path-shims-v040-dazzle_filekitlongpath).
+- **Junction-safe deletion** -- `remove_link` / `longpath.remove_shim` detach a
+  reparse point without descending into it. Necessary because a junction is
+  indistinguishable from an ordinary directory to `os.path.islink()` (`False`),
+  `os.path.isdir()` (`True`) and `DirEntry.is_symlink()` (`False`), so a naive
+  recursive delete can walk through one into live data.
 - **Cross-platform path conversion** -- Git Bash `/c/Users/...` and
   WSL `/mnt/c/Users/...` automatically convert to `C:\Users\...`
 - **Symbolic link creation with fallbacks** -- `os.symlink` → dazzlelink
