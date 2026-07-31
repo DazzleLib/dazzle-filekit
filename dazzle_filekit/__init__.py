@@ -138,6 +138,22 @@ from .pathenv import (
     append_path_value,
 )
 
+# v0.4.2 device/sink predicate -- "is this string a PLACE?", as distinct from
+# is_valid_path's "is this string LEGAL?". /dev/null is legal but is not a
+# location, so any consumer harvesting paths out of shell commands, configs,
+# or logs needs the former. (Driven by Claude-Session-Backup #56, where
+# `2>/dev/null` was being indexed as a session's top working directory.)
+from .utils.validation import (  # noqa: F401
+    POSIX_DEVICE_PATHS,
+    SILENT_ESCAPE_ORIGINS,
+    WINDOWS_INVALID_NAMES,
+    ensure_path_collection,
+    has_unescaped_backslash_damage,
+    is_device_path,
+    recover_unescaped_path,
+    suggest_reescaped_path,
+)
+
 # v0.4.0 long-path shims -- the remedy for the condition
 # utils.validation.is_valid_path already detects (paths over MAX_PATH without a
 # \\?\ prefix). Windows-only in effect; a no-op elsewhere.
@@ -160,7 +176,7 @@ from .longpath import (
     shim_path,
 )
 
-__version__ = '0.4.1'
+__version__ = '0.4.2'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -311,6 +327,17 @@ __all__ = [
     'normalize_path_entry',
     'path_value_contains',
     'append_path_value',
+
+    # Device / sink predicate (v0.4.2) -- "is this a PLACE?", distinct from
+    # is_valid_path's "is this LEGAL?"
+    'is_device_path',
+    'ensure_path_collection',
+    'has_unescaped_backslash_damage',
+    'recover_unescaped_path',
+    'suggest_reescaped_path',
+    'SILENT_ESCAPE_ORIGINS',
+    'POSIX_DEVICE_PATHS',
+    'WINDOWS_INVALID_NAMES',
 
     # Verification functions
     'calculate_file_hash',

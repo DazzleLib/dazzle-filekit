@@ -644,6 +644,8 @@ def copy_files_with_path(
         Dictionary mapping source paths to tuples of (success, destination_path)
     """
     from .paths import create_dest_path
+    from .utils.validation import ensure_path_collection
+    ensure_path_collection(source_files, "source_files")
     
     results = {}
     source_base_path = Path(source_base)
@@ -713,6 +715,8 @@ def move_files_with_path(
         Dictionary mapping source paths to tuples of (success, destination_path)
     """
     from .paths import create_dest_path
+    from .utils.validation import ensure_path_collection
+    ensure_path_collection(source_files, "source_files")
     
     results = {}
     source_base_path = Path(source_base)

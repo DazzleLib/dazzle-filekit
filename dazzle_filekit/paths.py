@@ -457,6 +457,11 @@ def find_files(
     Returns:
         List of matching file paths
     """
+    from .utils.validation import (
+        ensure_path_collection, has_unescaped_backslash_damage,
+        suggest_reescaped_path,
+    )
+    ensure_path_collection(search_paths, "search_paths")
     patterns = patterns or ['*']  # Default to all files
     exclude_patterns = exclude_patterns or []
     
@@ -467,6 +472,16 @@ def find_files(
         
         if not path_obj.exists():
             logger.warning(f"Search path does not exist: {search_path}")
+            if has_unescaped_backslash_damage(search_path):
+                # "C:\temp" without a raw string is C: + TAB + emp by the
+                # time it reaches us. Diagnosis is the expensive part of
+                # this bug; turn a baffling miss into a two-second fix.
+                logger.warning(
+                    "  it contains control characters from unescaped "
+                    "backslashes; did you mean %r? (use a raw string "
+                    "r'...' or double the backslashes)"
+                    % suggest_reescaped_path(search_path)
+                )
             continue
         
         if path_obj.is_file():
@@ -577,6 +592,11 @@ def find_regex_files(
     Returns:
         List of matching file paths
     """
+    from .utils.validation import (
+        ensure_path_collection, has_unescaped_backslash_damage,
+        suggest_reescaped_path,
+    )
+    ensure_path_collection(search_paths, "search_paths")
     exclude_patterns = exclude_patterns or []
     compiled_patterns = [re.compile(pattern) for pattern in regex_patterns]
     
@@ -587,6 +607,16 @@ def find_regex_files(
         
         if not path_obj.exists():
             logger.warning(f"Search path does not exist: {search_path}")
+            if has_unescaped_backslash_damage(search_path):
+                # "C:\temp" without a raw string is C: + TAB + emp by the
+                # time it reaches us. Diagnosis is the expensive part of
+                # this bug; turn a baffling miss into a two-second fix.
+                logger.warning(
+                    "  it contains control characters from unescaped "
+                    "backslashes; did you mean %r? (use a raw string "
+                    "r'...' or double the backslashes)"
+                    % suggest_reescaped_path(search_path)
+                )
             continue
         
         if path_obj.is_file():

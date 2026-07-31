@@ -29,6 +29,85 @@ WINDOWS_INVALID_NAMES = {
     'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'
 }
 
+# POSIX character devices and shell sinks, lowercase, no trailing slash.
+# These are perfectly VALID paths -- ``is_valid_path('/dev/null')`` returns
+# True and should keep doing so -- but they are not files or directories
+# anyone navigates to or stores work in. That is a different question, and
+# ``is_device_path`` is the one that answers it.
+POSIX_DEVICE_PATHS = frozenset({
+    '/dev/null', '/dev/zero', '/dev/full', '/dev/random', '/dev/urandom',
+    '/dev/stdin', '/dev/stdout', '/dev/stderr', '/dev/tty', '/dev/console',
+    '/dev/ptmx',
+})
+
+# Anything directly under /proc or /sys is kernel state, not storage.
+_PSEUDO_FS_PREFIXES = ('/proc/', '/sys/', '/dev/fd/')
+
+
+def is_device_path(path: Union[str, Path]) -> bool:
+    """
+    Check whether a path names a device / sink rather than a real file or
+    directory.
+
+    This is deliberately NOT the same question as :func:`is_valid_path`.
+    ``/dev/null`` is a legal POSIX path -- ``is_valid_path`` says True --
+    yet nothing is ever *stored* there, so any tool that harvests paths out
+    of shell commands, config files, or logs will want to discard it.
+
+    Recognized:
+      - POSIX character devices and shell sinks (``/dev/null``,
+        ``/dev/stdout``, ``/dev/tty``, ...), see :data:`POSIX_DEVICE_PATHS`
+      - Kernel pseudo-filesystems (``/proc/...``, ``/sys/...``, ``/dev/fd/N``)
+      - Windows reserved device names (``NUL``, ``CON``, ``AUX``, ``COM1``,
+        ``LPT1``, ...), with or without an extension and with or without a
+        directory prefix -- Windows resolves ``C:\\tmp\\nul`` to the device
+        regardless of location, see :data:`WINDOWS_INVALID_NAMES`
+
+    Both platforms' names are recognized on BOTH platforms on purpose: a
+    Windows host routinely reads Git-Bash/WSL commands containing
+    ``2>/dev/null``, and a POSIX host may parse Windows-authored scripts.
+    The question being answered is about the *string*, not about the host.
+
+    Args:
+        path: Path to test (str or Path)
+
+    Returns:
+        True if the path names a device or pseudo-filesystem entry.
+
+    Examples:
+        >>> is_device_path('/dev/null')
+        True
+        >>> is_device_path('NUL')
+        True
+        >>> is_device_path('C:/tmp/nul.txt')
+        True
+        >>> is_device_path('/home/user/dev/null-handling')
+        False
+    """
+    if path is None:
+        return False
+    raw = str(path).strip().strip('"\'')
+    if not raw:
+        return False
+
+    # POSIX shapes: compare on forward slashes, case-sensitively (POSIX
+    # device names are lowercase; /DEV/NULL is a different, ordinary path).
+    posix = raw.replace('\\', '/').rstrip('/')
+    if posix in POSIX_DEVICE_PATHS:
+        return True
+    if any(posix.startswith(prefix) for prefix in _PSEUDO_FS_PREFIXES):
+        return True
+
+    # Windows reserved names are position-independent and extension-blind:
+    # `nul`, `NUL.txt`, and `C:\anywhere\nul` all resolve to the device.
+    last = posix.rsplit('/', 1)[-1]
+    stem = last.split('.')[0].strip().lower()
+    if stem in WINDOWS_INVALID_NAMES:
+        return True
+
+    return False
+
+
 def is_valid_path(path: Union[str, Path]) -> bool:
     """
     Check if a path is valid on the current platform.
@@ -68,28 +147,39 @@ def _is_valid_windows_path(path: str) -> bool:
             logger.debug(f"Path exceeds Windows 260 character limit: {path}")
             return False
     
-    # Check for invalid characters in path
-    for part in path.split('\\'):
+    # Split on BOTH separators. Windows accepts '/' wherever it accepts
+    # '\\' -- the Win32 API normalizes it and every stdlib path call honors
+    # it -- so splitting on backslash alone collapsed `C:/code/x` into a
+    # single "component" containing '/' and ':', both of which are in
+    # WINDOWS_INVALID_CHARS. Every forward-slash path was therefore reported
+    # invalid, and the reserved-name / trailing-dot checks below never ran
+    # on one (they were short-circuited by the bogus character rejection).
+    for part in re.split(r'[\\/]', path):
+        # Empty parts come from UNC prefixes (\\server\share) and from a
+        # trailing separator; neither is a name to validate.
+        if not part:
+            continue
+
         # Skip drive letter (e.g., "C:")
         if len(part) == 2 and part[1] == ':':
             continue
-            
+
         # Check for invalid characters
         if any(c in WINDOWS_INVALID_CHARS for c in part):
             logger.debug(f"Path contains invalid characters: {path}")
             return False
-        
+
         # Check for reserved names
         name = part.split('.')[0].lower()
         if name in WINDOWS_INVALID_NAMES:
             logger.debug(f"Path contains reserved name: {path}")
             return False
-        
+
         # Check for leading/trailing spaces or periods
         if part.strip() != part or part.rstrip('.') != part:
             logger.debug(f"Path contains invalid leading/trailing spaces or periods: {path}")
             return False
-    
+
     return True
 
 def _is_valid_unix_path(path: str) -> bool:
@@ -440,3 +530,91 @@ def read_junction_target(path: Union[str, Path]) -> Optional[str]:
     except (OSError, AttributeError, ImportError) as e:
         logger.debug(f"read_junction_target({path}) failed: {e}")
         return None
+
+
+# -- issue #16: bare-string collection args, and unescaped-backslash paths --
+
+#: The eight escape sequences Python resolves SILENTLY in a non-raw string.
+#: ``"C:\temp"`` in source is ``C:`` + TAB + ``emp`` by the time any library
+#: sees it -- the backslash is already gone. Everything else either passes
+#: through intact (``\d``, ``\p``, ...) or raises SyntaxError loudly.
+SILENT_ESCAPE_ORIGINS = {
+    "\a": "a", "\b": "b", "\f": "f", "\n": "n",
+    "\r": "r", "\t": "t", "\v": "v", "\0": "0",
+}
+
+
+def ensure_path_collection(value, param: str = "paths"):
+    """Reject a single path where a collection of paths is expected.
+
+    A ``str`` is iterable, so passing one to a ``List[path]`` parameter is
+    not a TypeError -- it is consumed one CHARACTER at a time. Any realistic
+    path contains a separator, ``Path("/")`` is the drive root, and with
+    ``recursive=True`` that recursively globs the whole drive. The failure
+    is not loud, it is *expensive*, which is worse: it looks like a slow
+    operation rather than a mistake.
+
+    ``os.PathLike`` is included because a bare ``Path`` currently dies with
+    "'WindowsPath' object is not iterable" -- correct, but a long way from
+    telling the caller to add brackets.
+    """
+    if isinstance(value, (str, bytes, os.PathLike)):
+        raise TypeError(
+            f"{param} must be a list of paths, not a single path. "
+            f"Did you mean [{value!r}]?"
+        )
+    return value
+
+
+def has_unescaped_backslash_damage(path) -> bool:
+    """Whether ``path`` contains a control character one of the eight silent
+    escapes produces -- the fingerprint of ``"C:\temp"`` written without a
+    raw string."""
+    s = str(path)
+    return any(ch in s for ch in SILENT_ESCAPE_ORIGINS)
+
+
+def suggest_reescaped_path(path) -> str:
+    """The path the caller almost certainly meant: every silent-escape
+    control character replaced by the backslash sequence that produced it.
+    Purely lexical; no filesystem access."""
+    s = str(path)
+    for ch, letter in SILENT_ESCAPE_ORIGINS.items():
+        s = s.replace(ch, "\\" + letter)
+    return s
+
+
+def recover_unescaped_path(path):
+    """Return ``(path, recovered)``. Literal wins; recovery only on miss.
+
+    1. If ``path`` exists as given, return it untouched -- recovery never
+       overrides a working interpretation.
+    2. Otherwise, if it carries silent-escape damage AND the re-escaped
+       candidate exists, return the candidate with ``recovered=True``.
+    3. Otherwise return the original unchanged.
+
+    Step 2 cannot pick a wrong path on Windows, structurally: every silent
+    escape produces a character below 0x20, and NTFS forbids those in
+    filenames outright -- so the literal and the recovered path can never
+    BOTH exist. (On POSIX, control characters in filenames are legal-but-
+    bizarre; the literal-first ordering means such a file always wins.)
+
+    Public and opt-in by design: filekit itself only *warns* (see
+    ``find_files``), so the library never silently operates on a path the
+    caller did not pass.
+    """
+    s = str(path)
+    try:
+        if os.path.exists(s):
+            return s, False
+    except (OSError, ValueError):
+        return s, False
+    if not has_unescaped_backslash_damage(s):
+        return s, False
+    candidate = suggest_reescaped_path(s)
+    try:
+        if os.path.exists(candidate):
+            return candidate, True
+    except (OSError, ValueError):
+        pass
+    return s, False

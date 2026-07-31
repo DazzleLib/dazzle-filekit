@@ -169,6 +169,8 @@ def calculate_total_size(
     Returns:
         Total size in bytes
     """
+    from .validation import ensure_path_collection
+    ensure_path_collection(paths, "paths")
     total = 0
 
     for path in paths:
