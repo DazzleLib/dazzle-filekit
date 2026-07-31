@@ -40,6 +40,7 @@ recursively through a careless code path would delete the target's contents.
 """
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import logging
 import os
@@ -497,11 +498,18 @@ def shim_path(path: Union[str, Path],
     or fails to materialise -- so a caller is never left worse off than if this
     module did not exist.
 
-    **Never raises for a path-shaped input.** The whole body is guarded: a
-    malformed *root* (an embedded NUL, for instance, which surfaces as
-    ``ValueError`` rather than ``OSError``) degrades to the original path
-    instead of propagating. A caller substituting this for a bare path must not
-    have to grow an exception handler it did not previously need.
+    **Never raises for a path-shaped input.** The whole body is guarded, and
+    the guard has to be wider than it first looks. A malformed *root* -- an
+    embedded NUL, say -- surfaces differently depending on the interpreter:
+    on 3.12+ :func:`utils.validation.is_junction` delegates to
+    ``os.path.isjunction`` and the failure arrives as ``ValueError``, while on
+    3.9-3.11 it falls back to a ctypes ``DeviceIoControl`` call and the same
+    condition arrives as ``ctypes.ArgumentError``, which derives from
+    ``Exception`` and not from ``ValueError``. Catching only the latter passes
+    every test on a 3.13 dev box and raises on a 3.10 CI runner.
+
+    A caller substituting this for a bare path must not have to grow an
+    exception handler it did not previously need.
     """
     try:
         plan = plan_shim(path, root=root, threshold=threshold)
@@ -512,7 +520,7 @@ def shim_path(path: Union[str, Path],
         if plan.reason:
             logger.debug("no shim for %s: %s", path, plan.reason)
         return plan.original
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, ctypes.ArgumentError) as exc:
         logger.warning("shim_path fell back to the original path for %r: %s",
                        path, exc)
         return Path(path)

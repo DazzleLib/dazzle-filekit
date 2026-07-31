@@ -5,6 +5,13 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-30
+
+### Fixed
+- Twelve `longpath` tests asserted Windows path semantics without `@win_only`, so they ran on the `ubuntu-latest` and `macos-latest` legs of the CI matrix and failed there -- 11 failures on the one leg that finished before fail-fast cancelled the rest. `_same_dir` is built on `os.path.normcase` / `normpath` / `splitdrive`, each of which is a no-op or behaves differently off Windows: `posixpath.splitdrive("C:")` returns `("", "C:")` (no drive concept), `normcase` does not case-fold, and `normpath("C:\\")` leaves the backslash as an ordinary character. So `_same_dir("C:", "C:\\")` is `False` on Windows -- the 0.4.0 fix -- and `True` under posixpath, and the case-insensitivity assertions invert with it. The module is Windows-only in effect, so exercising its Windows semantics on a POSIX host tests nothing; `@win_only` is the correct gate rather than a workaround. Library code is unchanged.
+- `shim_path` could still propagate `ctypes.ArgumentError` on Python 3.9-3.11. The same malformed input (an embedded NUL in `root`) surfaces as a different exception type per interpreter: 3.12+ routes `is_junction` through `os.path.isjunction` and raises `ValueError`, while 3.9-3.11 fall back to a ctypes `DeviceIoControl` call whose `ctypes.ArgumentError` derives from `Exception`, not `ValueError` -- so `except (OSError, ValueError)` missed it despite its message reading "ValueError: embedded null character". Invisible on a 3.13 dev box; caught by the `windows-latest` 3.9/3.10/3.11 CI legs. The guard now covers all three types, and the regression tests force each type directly so any interpreter catches it.
+- Same class as the v0.3.3 "Windows-host-locked probe suite" that ubuntu CI caught on push. `tests/one-offs/run_suite_under_wsl.sh` is added so the Linux leg can be reproduced from a Windows dev box before pushing, and `tests/one-offs/thinking/probe_same_dir_under_posix_semantics.py` measures which comparisons change meaning off Windows (2 of 5 in its sample).
+
 ## [0.4.0] - 2026-07-30
 
 Additive-only release: no symbol removed, renamed, or behavior-changed. Bumped to a minor rather than a patch not for API surface but for *risk class* -- unlike `pathenv` (0.3.3, pure string logic, no I/O), this release introduces a module that **creates and deletes filesystem objects**. A consumer upgrading a patch release should not discover that it can mint reparse points on their system drive.

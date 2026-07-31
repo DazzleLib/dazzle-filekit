@@ -43,25 +43,30 @@ win_only = pytest.mark.skipif(not WINDOWS, reason="junctions are Windows-only")
 #    tests/one-offs/thinking/probe_same_dir_normalization.py), not assumed.
 # ==========================================================================
 
+@win_only
 def test_same_dir_none_handling():
     assert lp._same_dir(None, None) is False
     assert lp._same_dir(None, "C:\\x") is False
     assert lp._same_dir("C:\\x", None) is False
 
 
+@win_only
 def test_same_dir_trailing_separator_and_case():
     assert lp._same_dir("C:\\Foo\\Bar\\", "C:\\Foo\\Bar") is True
     assert lp._same_dir("C:\\FOO\\bar", "c:\\foo\\BAR") is True
 
 
+@win_only
 def test_same_dir_mixed_separators():
     assert lp._same_dir("C:/Foo/Bar", "C:\\Foo\\Bar") is True
 
 
+@win_only
 def test_same_dir_dotdot_collapse():
     assert lp._same_dir("C:\\Foo\\Bar\\..", "C:\\Foo") is True
 
 
+@win_only
 def test_same_dir_relative_vs_absolute_is_not_equal():
     """A relative spelling and an absolute one are NOT proven to be the same
     directory by string normalization alone -- correctly treated as
@@ -69,15 +74,18 @@ def test_same_dir_relative_vs_absolute_is_not_equal():
     assert lp._same_dir("Foo\\Bar", "C:\\Foo\\Bar") is False
 
 
+@win_only
 def test_same_dir_unc_extended_prefix_form():
     assert lp._same_dir("\\\\?\\UNC\\server\\share\\dir",
                         "\\\\server\\share\\dir") is True
 
 
+@win_only
 def test_same_dir_drive_extended_prefix_form():
     assert lp._same_dir("\\\\?\\C:\\Foo\\Bar", "C:\\Foo\\Bar") is True
 
 
+@win_only
 def test_same_dir_trailing_dot_and_space_not_collapsed():
     """Win32 silently strips trailing dots/spaces from path components at the
     API layer; _same_dir does NOT emulate that (normpath doesn't either), so
@@ -89,6 +97,7 @@ def test_same_dir_trailing_dot_and_space_not_collapsed():
     assert lp._same_dir("C:\\Foo ", "C:\\Foo") is False
 
 
+@win_only
 def test_same_dir_short_vs_long_name_synthetic():
     """8.3-vs-long-name for the SAME real directory, pure-string form. Same
     safe-direction false negative as trailing dot/space -- confirmed for a
@@ -97,6 +106,7 @@ def test_same_dir_short_vs_long_name_synthetic():
     assert lp._same_dir("C:\\PROGRA~1", "C:\\Program Files") is False
 
 
+@win_only
 def test_same_dir_bare_drive_letter_stays_distinct_from_drive_root():
     """FIXED in v0.4.0. Path("C:") is a DRIVE-RELATIVE path (root='', meaning
     "whatever the process's hidden per-drive cwd on C: is right now") --
@@ -657,6 +667,7 @@ def test_shim_path_never_raises_on_fuzz_battery_still_holds(tmp_path):
 # 7. candidate_roots -- SystemDrive fallback degenerate-value battery.
 # ==========================================================================
 
+@win_only
 @pytest.mark.parametrize("value", ["\\", "\\\\server\\share", "Q:", "c:", "C:\\"])
 def test_candidate_roots_degenerate_but_properly_shaped_systemdrive_values_stay_absolute(monkeypatch, value):
     """A bare backslash, a UNC root, a non-existent (but well-formed) drive
@@ -680,6 +691,7 @@ def test_candidate_roots_degenerate_but_properly_shaped_systemdrive_values_stay_
     )
 
 
+@win_only
 @pytest.mark.parametrize("value", ["C", "   "], ids=["colonless-drive-letter", "whitespace-only"])
 def test_candidate_roots_malformed_systemdrive_falls_back_to_c(monkeypatch, value):
     """FIXED in v0.4.0, and broader than just "colon-less". The first `or "C:"`
@@ -717,3 +729,47 @@ def test_candidate_roots_malformed_systemdrive_falls_back_to_c(monkeypatch, valu
         "expected the C: fallback for malformed SystemDrive=%r, got %r"
         % (value, first)
     )
+
+
+# ==========================================================================
+# 6. shim_path's guard must be interpreter-independent. The NUL-in-root case
+#    surfaces as a DIFFERENT exception type depending on Python version:
+#    3.12+ routes is_junction through os.path.isjunction (ValueError), while
+#    3.9-3.11 falls back to a ctypes DeviceIoControl call and raises
+#    ctypes.ArgumentError, which derives from Exception -- not ValueError.
+#    Caught only by CI on windows-latest 3.9/3.10/3.11; invisible on a 3.13
+#    dev box. These tests force each type so any interpreter catches a
+#    regression.
+# ==========================================================================
+
+@pytest.mark.parametrize("exc", [
+    ValueError("embedded null character"),
+    ctypes.ArgumentError("argument 1: ValueError: embedded null character"),
+    OSError("boom"),
+], ids=["ValueError", "ctypes.ArgumentError", "OSError"])
+def test_shim_path_swallows_every_guard_type_regardless_of_interpreter(
+        tmp_path, monkeypatch, exc):
+    """shim_path must return the ORIGINAL path, never propagate, whichever
+    exception type the underlying platform call happens to raise."""
+    def boom(*a, **k):
+        raise exc
+
+    monkeypatch.setattr(lp, "is_junction", boom)
+
+    original = tmp_path / ("z" * 200 + ".pdf")
+    result = lp.shim_path(original, root=tmp_path / ".dzs",
+                          threshold=10)      # force the shim path to be taken
+
+    assert result == original, (
+        "shim_path must degrade to the original path when the platform call "
+        "raises %s, not propagate it" % type(exc).__name__
+    )
+
+
+def test_ctypes_argument_error_is_not_a_valueerror():
+    """The reason the guard needed widening: ctypes.ArgumentError does NOT
+    inherit from ValueError, so `except (OSError, ValueError)` misses it even
+    though its own message says 'ValueError: embedded null character'."""
+    assert not issubclass(ctypes.ArgumentError, ValueError)
+    assert not issubclass(ctypes.ArgumentError, OSError)
+    assert issubclass(ctypes.ArgumentError, Exception)

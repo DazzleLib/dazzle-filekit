@@ -2,7 +2,7 @@
 
 [![Release Date](https://img.shields.io/github/release-date/DazzleLib/dazzle-filekit?color=green)](https://github.com/DazzleLib/dazzle-filekit/releases)
 [![PyPI](https://img.shields.io/pypi/v/dazzle-filekit?color=green)](https://pypi.org/project/dazzle-filekit/)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/dazzle-filekit?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/dazzle-filekit)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/dazzle-filekit?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pypistats.org/packages/dazzle-filekit)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![GitHub Discussions](https://img.shields.io/github/discussions/DazzleLib/dazzle-filekit)](https://github.com/DazzleLib/dazzle-filekit/discussions)
