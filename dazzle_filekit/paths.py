@@ -39,7 +39,7 @@ _WIN_DRIVE_RE = re.compile(r"^([a-zA-Z]):[\\/](.*)$")
 _MANGLED_MNT_RE = re.compile(r"[/\\]mnt[/\\]([a-zA-Z])[/\\](.*)")
 
 
-def _prepare_path_format(path_str: str) -> str:
+def _prepare_path_format(path_str: str, expand: bool = True) -> str:
     r"""Shared format-layer conversions for all path normalizers.
 
     Handles "portable path format" concerns that are the same regardless
@@ -71,15 +71,20 @@ def _prepare_path_format(path_str: str) -> str:
     path format" in filekit. ``normalize_cross_platform_path`` layers on
     top of it (``resolve=True`` -> link-following; default link-safe).
     """
-    path_str = path_str.strip()
+    if expand:
+        # expand=False takes the path LITERALLY: no strip, no ~, no
+        # variables. The shell has already expanded whatever the user meant
+        # to expand, so a "~" or "%VAR%" that reaches a deletion tool names a
+        # real file or folder (0.5.0; safedel's classifier needs this).
+        path_str = path_str.strip()
 
-    # Expand ~ first (handled by os.path.expanduser which is platform-aware)
-    path_str = os.path.expanduser(path_str)
+        # Expand ~ first (handled by os.path.expanduser which is platform-aware)
+        path_str = os.path.expanduser(path_str)
 
-    # Expand env vars: %VAR% and $VAR / ${VAR}. On Windows, expandvars
-    # understands both styles; on Unix, only $VAR / ${VAR}. Unknown vars
-    # are left as literals, which is the same behavior fixpath relies on.
-    path_str = os.path.expandvars(path_str)
+        # Expand env vars: %VAR% and $VAR / ${VAR}. On Windows, expandvars
+        # understands both styles; on Unix, only $VAR / ${VAR}. Unknown vars
+        # are left as literals, which is the same behavior fixpath relies on.
+        path_str = os.path.expandvars(path_str)
 
     if sys.platform == "win32":
         # On Windows, normalize toward the native C:\ form.
@@ -135,8 +140,14 @@ def normalize_cross_platform_path(
     path: Union[str, Path],
     *,
     resolve: bool = False,
+    expand: bool = True,
 ) -> Path:
     r"""Canonical path normalizer. Handles portable path formats across platforms.
+
+    ``expand=False`` (0.5.0) skips stripping whitespace and expanding ``~``
+    and environment variables: the path is taken literally, and only its
+    FORMAT is normalized (drive forms, separators, the ``\\?\`` prefix). The
+    default, ``expand=True``, is unchanged.
 
     **This is the path-normalization entry point in filekit.** Pass
     ``resolve=True`` for link-following normalization, or use the default
@@ -181,7 +192,7 @@ def normalize_cross_platform_path(
         normalize_cross_platform_path("/mnt/c/code/my-link", resolve=True)
         # -> Path("C:/code/actual-target")
     """
-    path_str = _prepare_path_format(str(path))
+    path_str = _prepare_path_format(str(path), expand=expand)
 
     if resolve:
         path_obj = Path(path_str)

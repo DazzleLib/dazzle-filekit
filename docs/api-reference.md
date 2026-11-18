@@ -669,6 +669,51 @@ because every naive test misidentifies a junction: `os.path.islink()` is
 
 ---
 
+## Portable Path Keys and Batch Layout (v0.5.0)
+
+Two pure modules: neither touches the disk, expands `~` or variables, or follows a link.
+
+### `dazzle_filekit.portable`
+
+```python
+from dazzle_filekit import encode_portable_path, decode_portable_path, key_to_relpath
+
+encode_portable_path(r"C:\Users\x\a.txt", flavor="windows")   # 'C/Users/x/a.txt'
+encode_portable_path("/mnt/c/Users/x/a.txt", flavor="wsl")    # 'C/Users/x/a.txt'  (the same file)
+encode_portable_path("/mnt/c/Users/x/a.txt", flavor="posix")  # 'ROOT/mnt/c/Users/x/a.txt'
+encode_portable_path(r"\\srv\share\a", flavor="windows")      # 'UNC/srv/share/a'
+
+decode_portable_path("C/Users/x", runtime="wsl")              # '/mnt/c/Users/x'
+decode_portable_path("C/Users/x", runtime="posix")            # None -- no drive C there
+
+key_to_relpath(["a", "b.txt"], target_flavor="windows")       # 'a\\b.txt'
+```
+
+- `flavor` / `runtime` / `target_flavor` are one of `"windows"`, `"wsl"`, `"posix"` and are required; anything else raises `ValueError`.
+- `PortablePathError` (a `ValueError`) is raised for a path with no portable form -- relative or drive-relative paths, device and volume-GUID paths, `..` above the root, a name that exists only under the `\\?\` prefix -- and by `key_to_relpath` for a part that would climb (`..`), is empty, or cannot exist on the target (a reserved device name or a trailing dot or space on Windows).
+
+### `dazzle_filekit.batch_layout`
+
+```python
+from dazzle_filekit import plan_batch
+
+plan = plan_batch([r"C:\proj\a\docs", r"C:\proj\b\docs"], flavor="windows")
+plan.ok                              # True
+plan.bases                           # [{'native': 'C:\\proj', 'key': 'C/proj'}]
+[i.relpath for i in plan.items]      # ['a/docs', 'b/docs']
+```
+
+- One base per root: the common parent of the items on that root. With more than one root, each item's relative path starts with its base's number (`0/...`, `1/...`).
+- Relative paths are always `/`-joined and never repeat within a plan.
+- Duplicates are merged (case-insensitively on a drive or share). An item inside another item is dropped with a warning, or reported as an error with `drop_nested=False`.
+- `is_link` is an optional callable `(path) -> bool`; an item that sits under another item which is a link is an error, since moving the link would not move it.
+- Problems are returned in `plan.errors`, not raised; check `plan.ok`.
+
+### Two keywords on existing functions
+
+- `normalize_cross_platform_path(path, expand=False)` -- takes the path literally: no whitespace strip, no `~`, no environment variables; only the format (drive forms, separators, the `\\?\` prefix) is normalized.
+- `copy_tree_preserving_links(src, dst, links="keep" | "follow" | "skip")` -- what happens to symlinks and junctions in the tree. `"keep"` (default) recreates each as a link; `"follow"` copies what it points at; `"skip"` leaves it out. Before 0.5.0 junctions were always followed.
+
 ## Logging Configuration
 
 - `configure_logging(level=logging.INFO, log_file=None)` — Configure

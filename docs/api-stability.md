@@ -8,8 +8,7 @@ must include a migration commit in the downstream caller(s) listed below.
 `tests/test_import_stability.py` is the automated canary for this document.
 If you rename or remove a locked symbol, that test will fail.
 
-Last audited: 2026-07-30 (filekit v0.4.1 -- `longpath` added below; no locked
-symbol changed since the v0.3.0 audit).
+Last audited: 2026-11-18 (filekit v0.5.0 -- `portable` and `batch_layout` added below; no locked symbol renamed or removed since the v0.3.0 audit; one behaviour change, to how `copy_tree_preserving_links` treats junctions).
 
 > **v0.3.0 (#15) is a deliberate clean break.** Unlike the deprecation-shim
 > migration procedure at the bottom of this doc, 0.3.0 removed/renamed locked
@@ -51,6 +50,32 @@ symbol changed since the v0.3.0 audit).
 | `get_disk_usage`, `check_disk_space`, `ensure_disk_space` | README example |
 | `verify_file_hash`, `verify_copied_files` | README example |
 | `configure_logging`, `enable_verbose_logging` | README example |
+
+### v0.5.0 additions (`portable`, `batch_layout`, two keywords)
+
+One literal, runtime-neutral way to name an absolute path inside a store, and a planner that lays a batch of paths out so no two share a stored path. Both are pure: no file access, nothing expanded or resolved. The first consumer is safedel's trash layout in dazzlecmd-lib.
+
+| Symbol | Purpose |
+|--------|---------|
+| `portable` (submodule) | The portable path key |
+| `encode_portable_path(path, *, flavor)` | Absolute path -> `/`-joined key whose first part is the root: a drive letter, `UNC/<server>/<share>`, or `ROOT`. `flavor` (`"windows"`, `"wsl"`, `"posix"`) is required: it says how to read the text |
+| `decode_portable_path(key, *, runtime)` | Key -> native path for that runtime, or `None` where the root has no native form there (a drive on plain POSIX) |
+| `key_to_relpath(parts_or_key, *, target_flavor)` | Join parts into a relative path that cannot climb and can exist on the target |
+| `PortablePathError` | Raised for a path or key with no portable form (a `ValueError`) |
+| `batch_layout` (submodule) | The batch planner |
+| `plan_batch(paths, *, flavor, is_link=None, drop_nested=True, target_flavor=None)` | One base per root (the items' common parent) and a `/`-joined relative path per item; returns a `BatchPlan` |
+| `BatchPlan`, `BatchItem` | The plan (`bases`, `items`, `warnings`, `errors`, `dropped`, `ok`) and one placed item (`original`, `base_index`, `relpath`) |
+
+Behaviours that are part of the lock:
+
+- The same file has one key from Windows and from WSL (`C:\x` and `/mnt/c/x` both give `C/x`); under `"posix"`, `/mnt/c/x` is an ordinary folder (`ROOT/mnt/c/x`).
+- Device paths, volume-GUID paths, drive-relative paths, `..` above the root, and names that exist only under the `\\?\` prefix are refused, never guessed at.
+- `plan_batch` never returns two items with the same relative path; what it cannot place is an error in the plan, not an exception.
+
+Two keywords added to locked functions, both with defaults that keep the 0.4.x call shape:
+
+- `normalize_cross_platform_path(path, *, resolve=False, expand=True)` -- `expand=False` takes the path literally (no whitespace strip, no `~`, no environment variables); only its format is normalized.
+- `copy_tree_preserving_links(src, dst, *, ..., links="keep")` -- `"keep"`, `"follow"` or `"skip"`, for symlinks and junctions alike. **Behaviour change:** through 0.4.3 a junction inside `src` was entered and its target copied, despite the name; `"keep"` now recreates it as a junction. Pass `links="follow"` for the old result.
 
 ### v0.4.0 additions (`longpath`)
 

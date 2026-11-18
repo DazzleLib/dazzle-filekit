@@ -5,6 +5,19 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-18
+
+A portable name for any absolute path, a planner that lays out a batch of paths without collisions, and a tree copy that really keeps junctions.
+
+### Added
+- **`dazzle_filekit.portable`** -- `encode_portable_path(path, *, flavor)` turns an absolute path into a `/`-joined key whose first part names the root: a drive letter (`C`), `UNC/<server>/<share>`, or `ROOT`. `flavor` is required, because the same text means different things on different systems: `/mnt/d/x` is drive D under WSL and an ordinary folder on plain Linux. `decode_portable_path(key, *, runtime)` goes back, returning `None` where the root has no native form. `key_to_relpath` joins parts into a relative path that cannot climb out of its folder and can exist on the target system. Nothing is expanded, resolved, or looked up on disk; a path with no portable form (a device path, a drive-relative path, `..` above the root) raises `PortablePathError`.
+- **`dazzle_filekit.batch_layout.plan_batch`** -- given a list of absolute paths, returns where each would sit under a shared folder so that no two collide: one base per root (the items' common parent), a `/`-joined relative path per item, and a numbered prefix when the batch spans more than one root. Duplicates are merged, an item inside another item is dropped with a warning (or reported as an error, the caller's choice), and anything that cannot be placed is listed as an error in the returned plan instead of raising.
+- **`normalize_cross_platform_path(..., expand=False)`** takes the path literally: no whitespace strip, no `~`, no environment variables. For paths a program received as arguments, where the shell has already expanded what the user meant to expand and a remaining `~` names a real folder.
+- **`copy_tree_preserving_links(..., links="keep" | "follow" | "skip")`** -- the caller chooses what happens to symlinks and junctions inside the tree.
+
+### Fixed
+- **`copy_tree_preserving_links` entered junctions and copied their targets**, despite its name and docstring. It was `shutil.copytree(symlinks=True)`, which keeps symlinks but treats a junction as a folder. With the default `links="keep"` a junction is now recreated at the destination as a junction with the same target, and nothing behind it is read. If one cannot be recreated the copy raises `shutil.Error`, so a caller that removes the source after a successful copy does not do so on a partial one. **This changes the result for trees that contain junctions**; pass `links="follow"` to copy the contents as before.
+
 ## [0.4.3] - 2026-07-31
 
 Documentation release. No packaged behaviour changes; the only source edit is a one-word docstring correction.

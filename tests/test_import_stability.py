@@ -78,6 +78,16 @@ TOP_LEVEL_LOCKED = [
     "normalize_path_entry",
     "path_value_contains",
     "append_path_value",
+    # v0.5.0 additions (portable path key + batch planner; safedel's layout)
+    "portable",  # the submodule
+    "PortablePathError",
+    "encode_portable_path",
+    "decode_portable_path",
+    "key_to_relpath",
+    "batch_layout",  # the submodule
+    "BatchItem",
+    "BatchPlan",
+    "plan_batch",
 ]
 
 
@@ -157,6 +167,17 @@ SUBMODULE_LOCKED = {
     "dazzle_filekit.utils.validation": [
         "is_junction",
         "read_junction_target",
+    ],
+    "dazzle_filekit.portable": [
+        "PortablePathError",
+        "encode_portable_path",
+        "decode_portable_path",
+        "key_to_relpath",
+    ],
+    "dazzle_filekit.batch_layout": [
+        "BatchItem",
+        "BatchPlan",
+        "plan_batch",
     ],
 }
 

@@ -261,19 +261,28 @@ def copy_tree_preserving_links(
     dirs_exist_ok: bool = False,
     ignore: Optional[Callable[..., Any]] = None,
     ignore_dangling_symlinks: bool = False,
+    links: str = "keep",
 ) -> Path:
-    """Copy a directory tree, preserving symlinks and junctions literally.
+    """Copy a directory tree; the caller chooses what happens to links in it.
 
-    This is a wrapper around ``shutil.copytree`` with ``symlinks=True``
-    hard-wired. The ``symlinks=True`` behavior is the whole point: when
-    ``copytree`` encounters a symlink or junction, it copies the LINK
-    (recording the target path) rather than recursing into the target.
+    ``links`` (keyword-only, 0.5.0) covers symlinks AND Windows junctions:
 
-    Why this matters: on Windows, the default ``symlinks=False`` will
-    traverse a junction and copy everything under it, which can loop
-    forever on self-referential junctions or pull in unexpectedly large
-    trees. This wrapper makes the safe behavior the default and the
-    name documents the intent.
+    - ``"keep"`` (default): each link is recreated at the destination as a
+      link with the same target. Nothing behind a link is read or copied.
+    - ``"follow"``: a link is replaced by a copy of what it points at.
+    - ``"skip"``: links are left out of the copy.
+
+    Why the choice exists: ``shutil.copytree(symlinks=True)`` keeps
+    symlinks but ENTERS junctions and copies their targets (measured
+    2026-11-18, Python 3.12, Windows 11). Through 0.4.3 this function
+    was that call, so despite its name a junction inside ``src`` was
+    followed. From 0.5.0 the default really keeps junctions; pass
+    ``links="follow"`` for a copy of the contents.
+
+    A junction that cannot be recreated under ``"keep"`` raises
+    ``shutil.Error`` after the rest of the tree is copied, so a caller
+    that removes ``src`` after a successful copy never does so on a
+    partial one. ``src`` itself is always entered, link or not.
 
     Args:
         src: Source directory path.
@@ -293,14 +302,59 @@ def copy_tree_preserving_links(
     sites all used ``shutil.copytree(..., symlinks=True)``. Centralized
     here so the safety property has a name.
     """
+    if links not in ("keep", "follow", "skip"):
+        raise ValueError(
+            f"links must be 'keep', 'follow' or 'skip', not {links!r}")
+
+    from .utils.validation import is_junction
+
+    src_root = os.path.abspath(str(src))
+    junctions: List[str] = []   # paths relative to src, found during the walk
+
+    def _ignore(directory: str, names: List[str]) -> Set[str]:
+        skipped: Set[str] = set(ignore(directory, names)) if ignore else set()
+        if links == "follow":
+            return skipped
+        for name in names:
+            if name in skipped:
+                continue
+            full = os.path.join(directory, name)
+            if is_junction(full):
+                # copytree would enter it. Hold it back; "keep" recreates it
+                # below, "skip" drops it.
+                skipped.add(name)
+                if links == "keep":
+                    junctions.append(os.path.relpath(full, src_root))
+            elif links == "skip" and os.path.islink(full):
+                skipped.add(name)
+        return skipped
+
     result = shutil.copytree(
-        str(src),
+        src_root,
         str(dst),
-        symlinks=True,
-        ignore=ignore,
+        symlinks=(links != "follow"),
+        ignore=_ignore,
         ignore_dangling_symlinks=ignore_dangling_symlinks,
         dirs_exist_ok=dirs_exist_ok,
     )
+
+    if junctions:
+        from .links import create_junction_raw
+        failed = []
+        for rel in junctions:
+            source_link = os.path.join(src_root, rel)
+            dest_link = os.path.join(str(dst), rel)
+            try:
+                target = os.readlink(source_link)
+                made = create_junction_raw(target, dest_link)
+            except OSError as exc:
+                failed.append((source_link, dest_link, str(exc)))
+                continue
+            if not made:
+                failed.append((source_link, dest_link,
+                               "the junction could not be recreated"))
+        if failed:
+            raise shutil.Error(failed)
     return Path(result)
 
 

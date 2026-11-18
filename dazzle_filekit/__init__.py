@@ -176,7 +176,22 @@ from .longpath import (
     shim_path,
 )
 
-__version__ = '0.4.3'
+# v0.5.0 portable path key + batch planner: one literal, runtime-neutral way
+# to name an absolute path inside a store (a drive letter, UNC/<server>/<share>
+# or ROOT as the first part), and a planner that lays a batch of paths out
+# under their common base so that no two items share a stored path. Pure: no
+# file access.
+from . import portable  # noqa: F401
+from .portable import (
+    PortablePathError,
+    encode_portable_path,
+    decode_portable_path,
+    key_to_relpath,
+)
+from . import batch_layout  # noqa: F401
+from .batch_layout import BatchItem, BatchPlan, plan_batch
+
+__version__ = '0.5.0'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -237,6 +252,17 @@ else:
 __all__ = [
     # Version
     '__version__',
+
+    # Portable path key and batch planner (v0.5.0)
+    'portable',
+    'PortablePathError',
+    'encode_portable_path',
+    'decode_portable_path',
+    'key_to_relpath',
+    'batch_layout',
+    'BatchItem',
+    'BatchPlan',
+    'plan_batch',
     
     # Logging functions
     'configure_logging',
