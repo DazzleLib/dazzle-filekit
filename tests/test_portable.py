@@ -101,6 +101,21 @@ def test_a_malformed_key_is_refused(bad):
         decode_portable_path(bad, runtime="windows")
 
 
+@pytest.mark.parametrize("bad", [
+    "XY/a",          # not a drive letter, not UNC, not ROOT
+    "c/Users/x",     # a drive letter is stored upper-case; lower-case is not a key root
+    "root/home/x",   # the root words are exact
+    "UNC/srv",       # a UNC key needs a server AND a share
+])
+@pytest.mark.parametrize("runtime", ["windows", "wsl", "posix"])
+def test_a_key_with_an_unknown_root_is_refused_not_guessed(bad, runtime):
+    # Added 2026-11-18: the red-green matrix showed nothing pinned this. A
+    # decoder that returned None here would read as "no native form on this
+    # system" -- a different, and wrong, answer for a key that is not a key.
+    with pytest.raises(PortablePathError):
+        decode_portable_path(bad, runtime=runtime)
+
+
 def test_key_to_relpath_joins_for_the_target():
     assert key_to_relpath(["a", "b.txt"], target_flavor="posix") == "a/b.txt"
     assert key_to_relpath(["a", "b.txt"], target_flavor="windows") == "a\\b.txt"

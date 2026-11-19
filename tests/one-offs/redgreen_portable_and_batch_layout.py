@@ -81,6 +81,47 @@ MUTATIONS = [
      [(O, "        skipped: Set[str] = set(ignore(directory, names)) if ignore else set()", "        skipped: Set[str] = set()")]),
     ("import: unctools is imported at module top again",
      [(P, "from dataclasses import dataclass\n", "from dataclasses import dataclass\nfrom unctools import get_unc_path_elements\n")]),
+    # -- decode, the relative-path join, and the flavor check: added
+    #    2026-11-18 after the reversion-to-test matrix showed that eleven
+    #    tests of these functions had never been turned red.
+    ("decode: a UNC key decodes on POSIX",
+     [(P, '        if runtime != "windows":\n            return None\n        return "\\\\\\\\" + "\\\\".join(rest)',
+          '        if False:\n            return None\n        return "\\\\\\\\" + "\\\\".join(rest)')]),
+    ("decode: a ROOT key decodes on Windows",
+     [(P, '    if head == "ROOT":\n        if runtime == "windows":\n            return None',
+          '    if head == "ROOT":\n        if False:\n            return None')]),
+    ("decode: a drive key decodes on plain POSIX",
+     [(P, '        if runtime == "wsl":\n            return f"/mnt/{head.lower()}"',
+          '        if True:\n            return f"/mnt/{head.lower()}"')]),
+    ("decode: the WSL mount keeps the upper-case letter",
+     [(P, 'return f"/mnt/{head.lower()}" + "".join("/" + p for p in rest)',
+          'return f"/mnt/{head}" + "".join("/" + p for p in rest)')]),
+    ("decode: an unknown key root is accepted",
+     [(P, '    raise PortablePathError(f"unknown key root {head!r} in {key!r}")', "    return None")]),
+    ("relpath: '..' and empty parts are accepted",
+     [(P, '    if part in ("", ".", ".."):\n        raise PortablePathError(f"invalid part {part!r} in {where}")',
+          '    if False:\n        raise PortablePathError(f"invalid part {part!r} in {where}")')]),
+    ("relpath: characters Windows cannot store are accepted",
+     [(P, "        if bad:\n            raise PortablePathError(\n                f\"part {part!r} has characters Windows cannot store \"",
+          "        if False:\n            raise PortablePathError(\n                f\"part {part!r} has characters Windows cannot store \"")]),
+    ("relpath: a trailing dot or space is accepted",
+     [(P, '        if part.endswith((".", " ")):', "        if False:")]),
+    ("relpath: a reserved Windows name is accepted",
+     [(P, '        if part.split(".")[0].upper() in _RESERVED:', "        if False:")]),
+    ("relpath: Windows rules are applied to a POSIX target too",
+     [(P, '    if target_flavor == "windows":\n        bad = sorted(', '    if True:\n        bad = sorted(')]),
+    ("relpath: joined with '/' for a Windows target",
+     [(P, '    sep = "\\\\" if target_flavor == "windows" else "/"\n    return sep.join(parts)', '    return "/".join(parts)')]),
+    ("decode: a malformed key ('..', empty part) is accepted",
+     [(P, '        if p in ("", ".", "..") or "\\x00" in p:\n            raise PortablePathError(f"invalid part {p!r} in key {key!r}")',
+          '        if False:\n            raise PortablePathError(f"invalid part {p!r} in key {key!r}")')]),
+    ("decode: a UNC key without a share is accepted",
+     [(P, "        if len(parts) < 3:\n            raise PortablePathError(f\"UNC key needs a server and a share: {key!r}\")",
+          "        if False:\n            raise PortablePathError(f\"UNC key needs a server and a share: {key!r}\")")]),
+    ("key: /mnt/<x> is not a drive under WSL either",
+     [(P, '    if flavor == "wsl" and len(parts) >= 2 and parts[0] == "mnt"', '    if False and len(parts) >= 2 and parts[0] == "mnt"')]),
+    ("flavor: an unknown flavor is accepted",
+     [(P, "    if flavor not in FLAVORS:\n", "    if False:\n")]),
     ("key: the error is only a ValueError again",
      [(P, "class PortablePathError(FileOperationError, ValueError):", "class PortablePathError(ValueError):")]),
     ("paths: the extended UNC prefix is not unwrapped",
@@ -132,6 +173,7 @@ def main(argv):
         print("baseline not green:", failed)
         return 2
     unpinned = []
+    results = {}        # reversion -> the tests it turned red
     for name, edits in MUTATIONS:
         if only and only not in name:
             continue
@@ -158,6 +200,7 @@ def main(argv):
             for path, text in originals.items():
                 with open(path, "w", encoding="utf-8", newline="\n") as fh:
                     fh.write(text)
+        results[name] = sorted(set(failed))
         if failed:
             print("RED    %-58s %d test(s): %s" % (name, len(failed), sorted(set(failed))[0][:70]))
         else:
@@ -165,6 +208,20 @@ def main(argv):
             unpinned.append(name)
     failed, tail = run(root)
     print("GREEN again:", tail)
+    out = os.environ.get("REDGREEN_JSON")
+    if out:
+        # A test in `collected` that no reversion turned red has never shown
+        # here that it can fail.
+        import json
+        env = dict(os.environ, PYTHONPATH=root, PYTHONDONTWRITEBYTECODE="1")
+        p = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+             "-o", "addopts="] + ["tests/" + t for t in TESTS],
+            cwd=root, env=env, capture_output=True, text=True)
+        collected = [ln.strip().split("::", 1)[-1] for ln in p.stdout.splitlines() if "::" in ln]
+        with open(out, "w", encoding="utf-8") as fh:
+            json.dump({"reversions": results, "collected": collected}, fh, indent=1)
+        print("wrote", out)
     print("unpinned: %d" % len(unpinned))
     for u in unpinned:
         print("  -", u)

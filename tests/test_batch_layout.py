@@ -144,8 +144,18 @@ def test_an_unknown_flavor_is_a_value_error():
 
 
 def test_many_items_never_collide():
-    """A seeded sweep: whatever the mix of depths and repeated names, an
-    accepted plan gives every item its own relative path."""
+    """A seeded sweep: whatever the mix of depths and repeated names, the
+    plan is accepted, every item gets its own relative path, every input is
+    either placed or reported dropped, and each place leads back to the path
+    it came from.
+
+    Strengthened 2026-11-18: the first version asserted only "no two items
+    share a place, IF the plan was accepted", and the red-green matrix showed
+    no reverted behaviour could make it fail -- a broken planner either still
+    gave distinct places or made the plan unaccepted, which the ``if``
+    skipped. These inputs (legal names, one drive, never a root) must always
+    be accepted, so that is now asserted, and so is the way back.
+    """
     import random
     rng = random.Random(20261118)
     names = ["a", "b", "docs", "x.json", "1.json", "private"]
@@ -156,7 +166,11 @@ def test_many_items_never_collide():
             parts = [rng.choice(names) for _ in range(depth)]
             paths.append("C:\\" + "\\".join(parts))
         plan = plan_batch(paths, flavor="windows")
-        if plan.ok:
-            rels = [r.casefold() for r in _rel(plan)]
-            assert len(rels) == len(set(rels)), paths
-            assert len(plan.items) + len(plan.dropped) == len(paths), paths
+        assert plan.ok, (paths, plan.errors)
+        rels = [r.casefold() for r in _rel(plan)]
+        assert len(rels) == len(set(rels)), paths
+        assert len(plan.items) + len(plan.dropped) == len(paths), paths
+        base = plan.bases[0]["native"]
+        for item in plan.items:
+            rebuilt = base.rstrip("\\") + "\\" + item.relpath.replace("/", "\\")
+            assert rebuilt == item.original, (paths, item)
