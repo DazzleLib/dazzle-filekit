@@ -421,6 +421,19 @@ def create_dest_path(
     elif path_style == 'absolute':
         # Preserve the absolute path structure
         if sys.platform == 'win32':
+            # A UNC source (\\server\share\..., and \\?\UNC\... which the
+            # normalisation above has already unwrapped) has no drive letter.
+            # Joining it onto dest_base returned the source path itself -- a
+            # destination OUTSIDE dest_base (dazzle-filekit#19). Since 0.5.2
+            # it goes through the portable key: \\server\share\d\a.txt ->
+            # dest_base\UNC\server\share\d\a.txt. Only this shape changes;
+            # drive paths keep today's layout, byte for byte, so no existing
+            # destination moves.
+            text = str(source_path)
+            if text.startswith('\\\\'):
+                from dazzle_filekit.portable import encode_portable_path, key_to_relpath
+                key = encode_portable_path(text, flavor='windows')
+                return dest_base / key_to_relpath(key, target_flavor='windows')
             # On Windows, replace drive letter with a directory
             drive, rest = split_drive_letter(source_path)
             drive = drive.rstrip(':')  # Remove colon from drive letter

@@ -27,7 +27,9 @@ B = "dazzle_filekit/batch_layout.py"
 P = "dazzle_filekit/portable.py"
 O = "dazzle_filekit/operations.py"
 TESTS = ("test_portable.py", "test_batch_layout.py", "test_paths_expand.py",
-         "test_copy_tree_links.py", "test_v051_import_and_unc_prefix.py")
+         "test_copy_tree_links.py", "test_v051_import_and_unc_prefix.py",
+         "test_create_dest_path_absolute_unc.py")
+PA = "dazzle_filekit/paths.py"
 
 MUTATIONS = [
     ("planner: duplicates are not merged",
@@ -141,6 +143,12 @@ MUTATIONS = [
     ("key: a component that needs the prefix is accepted",
      [(P, "    if split.needs_prefix:\n        bad = next(p for p in split.parts if _needs_prefix(p))\n        raise PortablePathError(",
           "    if False:\n        bad = next(p for p in split.parts if _needs_prefix(p))\n        raise PortablePathError(")]),
+    ("dest path: a UNC source is joined onto dest_base again (escapes)",
+     [(PA, "            if text.startswith('\\\\\\\\'):\n", "            if False:\n")]),
+    # Considered and dropped as equivalent (2026-11-19): routing EVERY Windows
+    # source through the key ("if True:") leaves all tests green because, for
+    # the normalised drive paths create_dest_path produces, the key's layout
+    # is byte-identical to the old drive layout. Not a gap in the tests.
 ]
 
 

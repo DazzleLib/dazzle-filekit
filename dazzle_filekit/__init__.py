@@ -191,7 +191,7 @@ from .portable import (
 from . import batch_layout  # noqa: F401
 from .batch_layout import BatchItem, BatchPlan, plan_batch
 
-__version__ = '0.5.1'
+__version__ = '0.5.2'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
