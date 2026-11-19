@@ -5,6 +5,18 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-18
+
+Two fixes found by reviewing 0.5.0 against the rest of the DazzleLib stack, before 0.5.0 was published.
+
+### Fixed
+- **`import dazzle_filekit` failed when `unctools` could not be imported.** The docs promise the package loads without it, and it did through 0.4.3; 0.5.0's new `portable` module imported `unctools` at module top. The import now happens only when a UNC path is actually encoded. Drive and POSIX paths need no `unctools` at all. A test now pins the promise, which nothing did before.
+- **`normalize_cross_platform_path` turned `\\?\UNC\server\share\x` into a path under the current folder.** Only `\\?\` was stripped, leaving `UNC\server\share\x`, which is relative. The extended-length network form is now unwrapped to `\\server\share\x`, with either slash and in any letter case. This predates 0.5.0; it matters more now that `expand=False` invites callers to pass paths through literally.
+
+### Changed
+- **`PortablePathError` now also derives from `dazzle_lib`'s `FileOperationError`**, so it sits under the stack's common root `DazzleError`. It is still a `ValueError`.
+- `docs/api-stability.md`: two tables still described `copy_tree_preserving_links` as a `shutil.copytree(symlinks=True)` wrapper.
+
 ## [0.5.0] - 2026-11-18
 
 A portable name for any absolute path, a planner that lays out a batch of paths without collisions, and a tree copy that really keeps junctions.

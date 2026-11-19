@@ -53,9 +53,10 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple, Union
 
-from unctools import get_unc_path_elements
+from dazzle_lib.exceptions import FileOperationError
 
-FLAVORS = ("windows", "wsl", "posix")
+
+FLAVORS =("windows", "wsl", "posix")
 
 _DRIVE_RE = re.compile(r"^([A-Za-z]):(.*)$", re.DOTALL)
 _WSL_DRIVE_RE = re.compile(r"^[A-Za-z]$")
@@ -67,9 +68,14 @@ _RESERVED = (
 )
 
 
-class PortablePathError(ValueError):
+class PortablePathError(FileOperationError, ValueError):
     """A path or key that cannot be expressed in, or converted from, the
-    portable key form. The message names the part at fault."""
+    portable key form. The message names the part at fault.
+
+    It is a ``ValueError`` (the argument was bad) and also sits under the
+    stack's common root, ``dazzle_lib.DazzleError``, through
+    ``FileOperationError`` -- so a caller can catch one root for every
+    DazzleLib library."""
 
 
 @dataclass(frozen=True)
@@ -145,6 +151,9 @@ def _split_windows(s: str, original: str) -> _Split:
         raise PortablePathError(f"device path is not portable: {original!r}")
 
     if s.startswith("\\\\"):
+        # Imported here, not at module top: filekit promises that
+        # ``import dazzle_filekit`` works without unctools loaded.
+        from unctools import get_unc_path_elements
         elements = get_unc_path_elements(s)
         if not elements or not elements[0] or not elements[1]:
             raise PortablePathError(f"UNC path needs a server and a share: {original!r}")

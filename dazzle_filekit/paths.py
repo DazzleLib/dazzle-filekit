@@ -112,8 +112,13 @@ def _prepare_path_format(path_str: str, expand: bool = True) -> str:
         # Normalize slashes to OS native
         path_str = path_str.replace("/", os.sep)
 
-        # Strip extended-length prefix \\?\
-        if path_str.startswith("\\\\?\\"):
+        # Strip the extended-length prefix. \\?\UNC\srv\share is the network
+        # path \\srv\share: dropping only "\\?\" would leave "UNC\srv\share",
+        # a RELATIVE path that then lands under the current folder (fixed in
+        # 0.5.1; a deletion tool normalizes its targets through here).
+        if path_str.upper().startswith("\\\\?\\UNC\\"):
+            path_str = "\\\\" + path_str[8:]
+        elif path_str.startswith("\\\\?\\"):
             path_str = path_str[4:]
     else:
         # On Unix (Linux/macOS), normalize toward /c/ style.

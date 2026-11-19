@@ -27,7 +27,7 @@ B = "dazzle_filekit/batch_layout.py"
 P = "dazzle_filekit/portable.py"
 O = "dazzle_filekit/operations.py"
 TESTS = ("test_portable.py", "test_batch_layout.py", "test_paths_expand.py",
-         "test_copy_tree_links.py")
+         "test_copy_tree_links.py", "test_v051_import_and_unc_prefix.py")
 
 MUTATIONS = [
     ("planner: duplicates are not merged",
@@ -79,6 +79,14 @@ MUTATIONS = [
      [(O, "        if failed:\n            raise shutil.Error(failed)", "        if False:\n            raise shutil.Error(failed)")]),
     ("copy: the caller's ignore is dropped",
      [(O, "        skipped: Set[str] = set(ignore(directory, names)) if ignore else set()", "        skipped: Set[str] = set()")]),
+    ("import: unctools is imported at module top again",
+     [(P, "from dataclasses import dataclass\n", "from dataclasses import dataclass\nfrom unctools import get_unc_path_elements\n")]),
+    ("key: the error is only a ValueError again",
+     [(P, "class PortablePathError(FileOperationError, ValueError):", "class PortablePathError(ValueError):")]),
+    ("paths: the extended UNC prefix is not unwrapped",
+     [("dazzle_filekit/paths.py", '        if path_str.upper().startswith("\\\\\\\\?\\\\UNC\\\\"):', "        if False:")]),
+    ("paths: the extended UNC marker is case-sensitive",
+     [("dazzle_filekit/paths.py", '        if path_str.upper().startswith("\\\\\\\\?\\\\UNC\\\\"):', '        if path_str.startswith("\\\\\\\\?\\\\UNC\\\\"):')]),
     ("key: /mnt/<x> is a drive on plain POSIX too",
      [(P, '    if flavor == "wsl" and len(parts) >= 2 and parts[0] == "mnt"', '    if len(parts) >= 2 and parts[0] == "mnt"')]),
     ("key: a device path is accepted",

@@ -167,7 +167,7 @@ logic; the `platform` keyword is `"windows"` / `"posix"` / `None` (host).
 |--------|-------------|
 | `atomic_write_text(path, content, *, encoding, newline)` | Atomic text file write via tmp+rename |
 | `atomic_write_json(path, data, *, indent, sort_keys, default, trailing_newline)` | Atomic JSON write; `default=str` handles `Path`/`datetime` |
-| `copy_tree_preserving_links(src, dst, *, dirs_exist_ok, ignore, ignore_dangling_symlinks)` | `shutil.copytree(symlinks=True)` wrapper with documented intent |
+| `copy_tree_preserving_links(src, dst, *, dirs_exist_ok, ignore, ignore_dangling_symlinks, links="keep")` | Tree copy in which the caller chooses what happens to symlinks and junctions (`keep` / `follow` / `skip`; see v0.5.0 above) |
 | `is_wsl()` | WSL detection (Linux-only, False elsewhere) |
 | `is_win32_available()` | Cached pywin32 availability probe (for rich Windows metadata features) |
 | `restore_windows_creation_time(path, created)` | NTFS ctime restoration via pywin32 `SetFileTime` |
@@ -232,7 +232,7 @@ Full rich metadata module ported from preservelib. Public submodule: callers can
 |--------|---------|
 | `atomic_write_text(path, content, *, encoding, newline)` | tmp+rename atomic text write |
 | `atomic_write_json(path, data, *, indent, sort_keys, default, trailing_newline)` | atomic JSON wrapper |
-| `copy_tree_preserving_links(src, dst, *, dirs_exist_ok, ignore, ignore_dangling_symlinks)` | `shutil.copytree(symlinks=True)` with intent documented |
+| `copy_tree_preserving_links(src, dst, *, dirs_exist_ok, ignore, ignore_dangling_symlinks, links="keep")` | link-aware tree copy (`links=` added in v0.5.0) |
 
 ### `dazzle_filekit.platform.windows` (new capabilities in v0.2.4)
 
