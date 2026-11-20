@@ -88,6 +88,11 @@ TOP_LEVEL_LOCKED = [
     "BatchItem",
     "BatchPlan",
     "plan_batch",
+    # v0.5.3 additions (lock file; current flavor; dz relaunch)
+    "current_flavor",
+    "locking",  # the submodule
+    "LockTimeoutError",
+    "exclusive_lock",
 ]
 
 
@@ -173,6 +178,13 @@ SUBMODULE_LOCKED = {
         "encode_portable_path",
         "decode_portable_path",
         "key_to_relpath",
+        "current_flavor",
+    ],
+    "dazzle_filekit.locking": [
+        "LockTimeoutError",
+        "exclusive_lock",
+        "try_lock",
+        "unlock",
     ],
     "dazzle_filekit.batch_layout": [
         "BatchItem",

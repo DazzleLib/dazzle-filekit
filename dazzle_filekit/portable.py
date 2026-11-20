@@ -41,7 +41,8 @@ Rules that hold for every key:
 :func:`key_to_relpath` is the only way a key (or any list of parts) becomes
 a path on disk: it refuses parts the target filesystem cannot hold.
 
-Pure: no I/O. UNC parsing delegates to ``unctools.get_unc_path_elements``;
+Pure: no I/O -- except :func:`current_flavor` (0.5.3), the one function that
+inspects the running interpreter. UNC parsing delegates to ``unctools.get_unc_path_elements``;
 the ``\\?\`` and ``\\.\`` prefixes are recognised here first, because
 unctools reads them as an ordinary server named ``?`` or ``.``.
 """
@@ -57,6 +58,27 @@ from dazzle_lib.exceptions import FileOperationError
 
 
 FLAVORS =("windows", "wsl", "posix")
+
+
+def current_flavor() -> str:
+    """The flavor of the running interpreter: ``windows``, ``wsl`` or ``posix``.
+
+    The one function in this module that looks at the runtime (it reads the
+    platform and, on Linux, ``WSL_DISTRO_NAME`` / ``/proc/version`` through
+    ``utils.compat.is_wsl``). It exists so callers can say which flavor *they*
+    are -- for example a store recording the flavor its keys were written in.
+    ``encode_portable_path`` and ``decode_portable_path`` never default to it:
+    a durable key must not depend on which Python wrote it, so their
+    ``flavor`` / ``runtime`` arguments stay required.
+
+    Added in 0.5.3 (first consumer: dz relaunch's set files).
+    """
+    from .utils import compat  # imported here: a top-level import broke 0.5.0's package import
+    if compat.is_windows():
+        return "windows"
+    if compat.is_wsl():
+        return "wsl"
+    return "posix"
 
 _DRIVE_RE = re.compile(r"^([A-Za-z]):(.*)$", re.DOTALL)
 _WSL_DRIVE_RE = re.compile(r"^[A-Za-z]$")
@@ -80,7 +102,7 @@ class PortablePathError(FileOperationError, ValueError):
 
 @dataclass(frozen=True)
 class _Split:
-    """An absolute path taken apart. ``token`` is the key's root part(s)
+    r"""An absolute path taken apart. ``token`` is the key's root part(s)
     (``("C",)``, ``("UNC", server, share)``, ``("ROOT",)``); ``root_native``
     is the literal root as written, so a native path can be rebuilt;
     ``parts`` are the lexically folded components; ``case_insensitive``
@@ -127,7 +149,7 @@ def _fold(parts: Sequence[str], original: str) -> Tuple[str, ...]:
 
 
 def _needs_prefix(part: str) -> bool:
-    """True for a component Windows accepts only under ``\\?\``."""
+    r"""True for a component Windows accepts only under ``\\?\``."""
     return part.endswith((".", " ")) or part.split(".")[0].upper() in _RESERVED
 
 

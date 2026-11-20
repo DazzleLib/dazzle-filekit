@@ -180,18 +180,25 @@ from .longpath import (
 # to name an absolute path inside a store (a drive letter, UNC/<server>/<share>
 # or ROOT as the first part), and a planner that lays a batch of paths out
 # under their common base so that no two items share a stored path. Pure: no
-# file access.
+# file access -- except portable.current_flavor (0.5.3), which reads the
+# running interpreter's platform.
 from . import portable  # noqa: F401
 from .portable import (
     PortablePathError,
     encode_portable_path,
     decode_portable_path,
     key_to_relpath,
+    current_flavor,
 )
 from . import batch_layout  # noqa: F401
 from .batch_layout import BatchItem, BatchPlan, plan_batch
 
-__version__ = '0.5.2'
+# v0.5.3: an exclusive lock on one dedicated lock file (msvcrt / flock),
+# with a deadline instead of an unbounded wait.
+from . import locking  # noqa: F401
+from .locking import LockTimeoutError, exclusive_lock
+
+__version__ = '0.5.3'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
@@ -259,11 +266,17 @@ __all__ = [
     'encode_portable_path',
     'decode_portable_path',
     'key_to_relpath',
+    'current_flavor',
     'batch_layout',
     'BatchItem',
     'BatchPlan',
     'plan_batch',
-    
+
+    # Lock file (v0.5.3)
+    'locking',
+    'LockTimeoutError',
+    'exclusive_lock',
+
     # Logging functions
     'configure_logging',
     'enable_verbose_logging',

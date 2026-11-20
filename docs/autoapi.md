@@ -112,3 +112,30 @@ the one to learn from.
 .. automodule:: dazzle_filekit.utils.disk
    :members:
 ```
+
+---
+
+## Portable path keys
+
+```{eval-rst}
+.. automodule:: dazzle_filekit.portable
+   :members:
+```
+
+---
+
+## Batch layout
+
+```{eval-rst}
+.. automodule:: dazzle_filekit.batch_layout
+   :members:
+```
+
+---
+
+## Exclusive lock
+
+```{eval-rst}
+.. automodule:: dazzle_filekit.locking
+   :members:
+```

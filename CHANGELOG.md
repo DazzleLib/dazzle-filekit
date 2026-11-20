@@ -5,6 +5,12 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-11-19
+
+### Added
+- **`exclusive_lock(path, timeout=5.0)` -- an exclusive lock on one dedicated lock file, on every OS** (`dazzle_filekit.locking`). A context manager over Windows `msvcrt.locking` (byte 0, non-blocking) and POSIX `flock`. It retries until the deadline and then raises `LockTimeoutError` naming the file, rather than waiting without limit; the lock is released when the block ends and by the operating system when the holder dies. `path` must be a lock file of its own, never the data it protects: on Windows the lock is mandatory and would make that byte unreadable to other handles. `try_lock` and `unlock` expose the single non-blocking attempt for callers that manage the descriptor themselves.
+- **`current_flavor()`** in `dazzle_filekit.portable`: `"windows"`, `"wsl"` or `"posix"` for the running interpreter, so a store can record which flavor its portable keys were written in. It is the one function in `portable` that looks at the runtime; `encode_portable_path` and `decode_portable_path` still require `flavor` and `runtime` explicitly.
+
 ## [0.5.2] - 2026-11-19
 
 ### Fixed

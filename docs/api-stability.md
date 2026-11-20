@@ -8,7 +8,7 @@ must include a migration commit in the downstream caller(s) listed below.
 `tests/test_import_stability.py` is the automated canary for this document.
 If you rename or remove a locked symbol, that test will fail.
 
-Last audited: 2026-11-18 (filekit v0.5.0 -- `portable` and `batch_layout` added below; no locked symbol renamed or removed since the v0.3.0 audit; one behaviour change, to how `copy_tree_preserving_links` treats junctions).
+Last audited: 2026-11-19 (filekit v0.5.3 -- `locking` and `portable.current_flavor` added below; v0.5.0 -- `portable` and `batch_layout` added below; no locked symbol renamed or removed since the v0.3.0 audit; one behaviour change, to how `copy_tree_preserving_links` treats junctions).
 
 > **v0.3.0 (#15) is a deliberate clean break.** Unlike the deprecation-shim
 > migration procedure at the bottom of this doc, 0.3.0 removed/renamed locked
@@ -51,9 +51,21 @@ Last audited: 2026-11-18 (filekit v0.5.0 -- `portable` and `batch_layout` added 
 | `verify_file_hash`, `verify_copied_files` | README example |
 | `configure_logging`, `enable_verbose_logging` | README example |
 
+### v0.5.3 additions (`locking`, `current_flavor`)
+
+An exclusive lock on one dedicated lock file, and the flavor of the running interpreter for callers of the portable key. The first consumer of both is dz relaunch's store (dazzlecmd).
+
+| Symbol | Purpose |
+|--------|---------|
+| `locking` (submodule) | The lock file |
+| `exclusive_lock(path, *, timeout=5.0)` | Context manager: hold an exclusive lock on a dedicated lock file (Windows `msvcrt.locking`, POSIX `flock`); retries until `timeout`, then raises |
+| `LockTimeoutError` | `FileOperationError` + `TimeoutError`: the lock stayed held past the deadline |
+| `locking.try_lock(fd)` / `locking.unlock(fd)` | One non-blocking attempt / release on an open descriptor |
+| `current_flavor()` (in `portable`) | `"windows"`, `"wsl"` or `"posix"` for the running interpreter -- the one function in `portable` that inspects the runtime; `encode`/`decode` keep `flavor`/`runtime` required |
+
 ### v0.5.0 additions (`portable`, `batch_layout`, two keywords)
 
-One literal, runtime-neutral way to name an absolute path inside a store, and a planner that lays a batch of paths out so no two share a stored path. Both are pure: no file access, nothing expanded or resolved. The first consumer is safedel's trash layout in dazzlecmd-lib.
+One literal, runtime-neutral way to name an absolute path inside a store, and a planner that lays a batch of paths out so no two share a stored path. Both are pure: no file access, nothing expanded or resolved (0.5.3's `current_flavor` is the one exception, and says so). The first consumer is safedel's trash layout in dazzlecmd-lib.
 
 | Symbol | Purpose |
 |--------|---------|

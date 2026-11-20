@@ -4,7 +4,7 @@ Full function reference for `dazzle_filekit`. For a quick-start walkthrough,
 see the [README](https://github.com/DazzleLib/dazzle-filekit/blob/main/README.md). For the locked public API surface that
 external tools depend on, see [api-stability.md](api-stability.md).
 
-**Documents v0.4.3** — last reviewed 2026-07-31.
+**Documents v0.5.3** — last reviewed 2026-11-19.
 
 ## Table of Contents
 
@@ -21,6 +21,8 @@ external tools depend on, see [api-stability.md](api-stability.md).
 - [Validation Functions](#validation-functions)
 - [Is this a *place*?](#is-this-a-place-v042)
 - [Long-Path Shims](#long-path-shims-v040-dazzle_filekitlongpath)
+- [Portable Path Keys and Batch Layout](#portable-path-keys-and-batch-layout-v050)
+- [Exclusive Lock](#exclusive-lock-v053-dazzle_filekitlocking)
 - [Logging Configuration](#logging-configuration)
 
 ---
@@ -242,9 +244,12 @@ These delegate to the rich `dazzle_filekit.metadata` module as of v0.2.4:
 - `atomic_write_json(path, data, *, indent=2, sort_keys=False, default=str, trailing_newline=True)` —
   Atomic JSON write. `default=str` handles `Path`/`datetime`/other
   non-JSON-native types out of the box.
-- `copy_tree_preserving_links(src, dst, *, dirs_exist_ok=False, ignore=None, ignore_dangling_symlinks=False)` —
-  `shutil.copytree(symlinks=True)` wrapper with documented intent.
-  Never traverses junctions on Windows.
+- `copy_tree_preserving_links(src, dst, *, dirs_exist_ok=False, ignore=None, ignore_dangling_symlinks=False, links="keep")` —
+  Copy a tree without walking into its links. With `links="keep"` (the
+  default) each symlink and Windows junction is recreated at the destination
+  pointing at the same target, and nothing behind it is read; `"follow"`
+  copies what it points at; `"skip"` leaves it out. Before 0.5.0 junctions were
+  always followed -- see [Breaking Changes](breaking-changes.md).
 - `AtomicStreamWriter(path, *, encoding='utf-8', newline=None)` — the streaming
   form of the same tmp+rename guarantee, for output too large to build in
   memory first (ported from dazzlesum's `MonolithicWriter`). Use it as a
@@ -714,6 +719,28 @@ plan.bases                           # [{'native': 'C:\\proj', 'key': 'C/proj'}]
 - `normalize_cross_platform_path(path, expand=False)` -- takes the path literally: no whitespace strip, no `~`, no environment variables; only the format (drive forms, separators, the `\\?\` prefix) is normalized.
 - `copy_tree_preserving_links(src, dst, links="keep" | "follow" | "skip")` -- what happens to symlinks and junctions in the tree. `"keep"` (default) recreates each as a link; `"follow"` copies what it points at; `"skip"` leaves it out. Before 0.5.0 junctions were always followed.
 
+### `current_flavor()` (v0.5.3)
+
+`portable.current_flavor()` returns `"windows"`, `"wsl"` or `"posix"` for the running interpreter, so a store can record which flavor its keys were written in. It is the one function in `portable` that looks at the runtime; `encode_portable_path` and `decode_portable_path` still take `flavor` and `runtime` explicitly.
+
+## Exclusive Lock (v0.5.3, `dazzle_filekit.locking`)
+
+One process at a time, on every OS, with a deadline instead of an endless wait.
+
+```python
+from dazzle_filekit import exclusive_lock, LockTimeoutError
+
+try:
+    with exclusive_lock(store_dir / ".lock", timeout=5.0):
+        ...  # read, change, write
+except LockTimeoutError as e:
+    print(e)  # names the lock file another process is holding
+```
+
+- `exclusive_lock(path, *, timeout=5.0, ...)` -- a context manager over Windows `msvcrt.locking` (byte 0, non-blocking) and POSIX `flock`. It retries until the deadline, then raises `LockTimeoutError` (a `TimeoutError` and a `FileOperationError`). The lock is released when the block ends, and by the operating system if the holder dies, so a crash never leaves it stuck.
+- `path` must be a **lock file of its own**, never the data it protects: on Windows the lock is mandatory, and the locked byte would become unreadable to other handles.
+- `try_lock(fd)` and `unlock(fd)` are the single non-blocking attempt and the release, for callers that manage the descriptor themselves.
+
 ## Logging Configuration
 
 - `configure_logging(level=logging.INFO, log_file=None)` — Configure
@@ -726,7 +753,7 @@ plan.bases                           # [{'native': 'C:\\proj', 'key': 'C/proj'}]
 
 - `__version__` — Package version string.
 
-**This reference documents v0.4.1** (last reviewed 2026-07-30). Anything added
+**This reference documents v0.5.3** (last reviewed 2026-11-19). Anything added
 after that release is in [`CHANGELOG.md`](https://github.com/DazzleLib/dazzle-filekit/blob/main/CHANGELOG.md) but may not have
 reached this page yet — check there first if a symbol you expected is missing.
 

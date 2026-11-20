@@ -21,6 +21,41 @@ copies of `log-command.py` across `claude-session-logger/`. Do not repeat.
 
 ---
 
+## v0.5.0 – v0.5.3 (one behaviour change; otherwise additive)
+
+**Summary**: No names removed and no signatures tightened. One function now
+does what its name always said, which changes its result for trees that hold
+junctions.
+
+- **0.5.0 -- `copy_tree_preserving_links` keeps junctions.** Through 0.4.3 it
+  was `shutil.copytree(symlinks=True)`, which keeps symlinks but treats a
+  Windows junction as an ordinary folder: it walked in and copied whatever the
+  junction pointed at. With the new default `links="keep"`, a junction is
+  recreated at the destination as a junction with the same target, and nothing
+  behind it is read. If one cannot be recreated the copy raises
+  `shutil.Error`, so a caller that removes the source after a successful copy
+  never does so after a partial one.
+  - *Justification*: the old result contradicted the function's name and
+    docstring. A tree holding a junction to a large folder (or a drive root)
+    was copied in full, and the copy was no longer a link to it.
+  - *Migration*: pass `links="follow"` to copy the contents as before;
+    `links="skip"` leaves links out.
+  - *Callers* (searched `C:\code\` on 2026-11-19): one live consumer,
+    dazzlecmd-lib's safedel (`core/safedel/_platform.py`, `_recover.py`), which
+    uses the default and relies on links being kept. The other hits are
+    archived copies of dazzlecmd, not installed code.
+- **0.5.0** added `portable` (portable path keys), `batch_layout.plan_batch`,
+  and `normalize_cross_platform_path(expand=False)` -- additive.
+- **0.5.1** made `PortablePathError` also derive from dazzle-lib's
+  `FileOperationError` (it is still a `ValueError`, so `except ValueError`
+  keeps working), and fixed `\\?\UNC\...` normalising to a relative path.
+- **0.5.2** fixed `create_dest_path(path_style="absolute")` for UNC sources;
+  drive-letter destinations are byte-identical to 0.5.1.
+- **0.5.3** added `locking.exclusive_lock` / `LockTimeoutError` and
+  `portable.current_flavor()` -- additive.
+
+---
+
 ## v0.4.0 – v0.4.2 (additive, no breaks)
 
 **Summary**: No names removed, no signatures tightened, no behaviour removed.

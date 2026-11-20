@@ -161,8 +161,9 @@ measured in two independent PDF readers.
 `shim_path()` sites a junction at a short root and hands back a shorter name
 for the same bytes, so **any** application can open the file.
 
-+++
+:::{card-footer}
 [Long-Path Shims →](api-reference.md#long-path-shims-v040-dazzle_filekitlongpath)
+:::
 ::::
 
 ::::{grid-item-card} Junctions lie to every naive check
@@ -173,8 +174,9 @@ so a recursive delete can walk through one into live data.
 
 Use `is_junction()` (reparse-tag based) and `remove_link()` / `remove_shim()`.
 
-+++
+:::{card-footer}
 [Link Primitives →](api-reference.md#link-primitives-v030-dazzle_filekitlinks)
+:::
 ::::
 
 :::::

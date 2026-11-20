@@ -6,7 +6,7 @@ two items share one (``a/x.json`` and ``b/x.json``). Using each item's full
 path is safe but long. ``plan_batch`` keeps what is shared out of the stored
 paths: for each root (a drive, a network share, the POSIX root) it finds the
 common parent folder of the batch's items -- the *base* -- and gives every
-item its path relative to that base.
+item its path relative to that base. For example::
 
     C:\\Users\\me\\.claude\\session-states\\1.json
     C:\\Users\\me\\claude\\context-window\\1.json
@@ -22,6 +22,7 @@ The function is pure: it reads no disk. Whether an item is a link is asked
 through ``is_link``, a function the caller supplies.
 
 Rules (each reported, never silent):
+
 - exact duplicates, and on case-insensitive roots (drives, shares, WSL
   drives) duplicates that differ only by case, are merged -- a warning;
 - an item inside another item of the batch is dropped, the ancestor carries
