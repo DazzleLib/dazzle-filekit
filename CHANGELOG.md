@@ -5,6 +5,14 @@ All notable changes to dazzle-filekit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-11-23
+
+### Fixed
+- **`copy_tree_preserving_links` no longer crashes on a reparse point it cannot read.** When `is_junction` cannot read an entry's reparse tag it answers "junction", so the copy holds the entry back and later recreates it from `os.readlink`. For a WSL symlink, an app execution alias or a cloud placeholder that raises `ValueError`, which escaped mid-copy and left later junctions in the tree unrecreated. The entry is now listed in the `shutil.Error` raised at the end, like any junction that could not be recreated ("not a junction or symlink; its target cannot be read"); the rest of the tree is copied.
+
+### Tests
+- `tests/test_copy_tree_foreign_reparse.py` (1; fails on 0.5.3).
+
 ## [0.5.3] - 2026-11-19
 
 ### Added

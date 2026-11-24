@@ -347,6 +347,14 @@ def copy_tree_preserving_links(
             try:
                 target = os.readlink(source_link)
                 made = create_junction_raw(target, dest_link)
+            except (ValueError, NotImplementedError) as exc:
+                # is_junction guesses "junction" when it cannot read the
+                # reparse tag; a WSL symlink, app alias or cloud placeholder
+                # then has no readable target (0.5.4).
+                failed.append((source_link, dest_link,
+                               f"not a junction or symlink; its target cannot "
+                               f"be read ({exc})"))
+                continue
             except OSError as exc:
                 failed.append((source_link, dest_link, str(exc)))
                 continue

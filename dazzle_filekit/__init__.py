@@ -198,7 +198,7 @@ from .batch_layout import BatchItem, BatchPlan, plan_batch
 from . import locking  # noqa: F401
 from .locking import LockTimeoutError, exclusive_lock
 
-__version__ = '0.5.3'
+__version__ = '0.5.4'
 
 def configure_logging(level=logging.INFO, log_file=None):
     """
